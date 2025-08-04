@@ -271,6 +271,58 @@ async def release_game_channel(guild: nextcord.Guild, channel_id: int) -> bool:
         return False
 
 
+def create_progress_bar(current_round: int, total_rounds: int) -> str:
+    """Create a visual progress bar for rounds"""
+    progress_filled = "▓" * current_round
+    progress_empty = "░" * (total_rounds - current_round)
+    return f"[{progress_filled}{progress_empty}] Round {current_round}/{total_rounds}"
+
+
+def create_round_embed(instance: Instance, challenge: Challenge) -> nextcord.Embed:
+    """Create a standardized round embed with progress bar"""
+    progress_bar = create_progress_bar(
+        instance.current_round, instance.config.main_rounds
+    )
+
+    embed = nextcord.Embed(
+        title=f"Round {instance.current_round}",
+        description=f"`{progress_bar}`\n\n{challenge.question}",
+        color=nextcord.Color.purple(),
+    )
+    embed.add_field(
+        name="Time Limit",
+        value=f"{challenge.time_limit} seconds",
+        inline=True,
+    )
+    embed.add_field(
+        name="Game Type",
+        value=challenge.challenge_type.value.replace("_", " ").title(),
+        inline=True,
+    )
+    return embed
+
+
+async def manage_answer_reactions(
+    message: nextcord.Message, previous_ts: Optional[str], response_time: float
+):
+    """Handle reaction management for answer submissions"""
+    if previous_ts:
+        try:
+            previous_message = await message.channel.fetch_message(int(previous_ts))
+            await previous_message.remove_reaction("👍", message.guild.me)
+            await previous_message.remove_reaction("⚡", message.guild.me)
+            await previous_message.remove_reaction("🐌", message.guild.me)
+        except (nextcord.NotFound, nextcord.HTTPException, ValueError):
+            pass  # message probably already unreacted?
+
+    if response_time <= 3:
+        await message.add_reaction("⚡")
+    elif response_time <= 8:
+        await message.add_reaction("👍")
+    else:
+        await message.add_reaction("🐌")
+
+
 def generate_challenge(game_type: GameType) -> Challenge:
     if game_type == GameType.QUICK_MATH:
         a, b = random.randint(10, 99), random.randint(10, 99)
@@ -372,12 +424,29 @@ async def auto_evaluate_round(guild_id: int, channel_id: int):
 
     results = instance.evaluate_current_challenge()
 
+    new_leader = instance.check_leader_change()
+    if new_leader:
+        leader_embed = nextcord.Embed(
+            title="🚨 NEW LEADER! 🚨",
+            description=f"<@{new_leader}> has taken the lead!",
+            color=nextcord.Color.gold(),
+        )
+        await channel.send(embed=leader_embed)
+
     embed = nextcord.Embed(title="Round Results", color=nextcord.Color.blue())
+
+    if instance.current_challenge and instance.current_challenge.correct_answer:
+        correct_answer = instance.current_challenge.correct_answer
+        if isinstance(correct_answer, list):
+            answer_text = " / ".join(str(ans) for ans in correct_answer)
+        else:
+            answer_text = str(correct_answer)
+        embed.add_field(name="Correct Answer", value=f"`{answer_text}`", inline=False)
 
     if results["correct_players"]:
         correct_names = [f"<@{uid}>" for uid in results["correct_players"]]
         embed.add_field(
-            name="Correct Answers",
+            name="✅ Correct",
             value=", ".join(correct_names) if correct_names else "None",
             inline=False,
         )
@@ -385,8 +454,22 @@ async def auto_evaluate_round(guild_id: int, channel_id: int):
     if results["failed_players"]:
         failed_names = [f"<@{uid}>" for uid in results["failed_players"]]
         embed.add_field(
-            name="Failed/No Answer",
+            name="❌ Incorrect/No Answer",
             value=", ".join(failed_names) if failed_names else "None",
+            inline=False,
+        )
+
+    leaderboard = []
+    for user_id, player in sorted(
+        instance.players.items(), key=lambda x: x[1].score, reverse=True
+    ):
+        if player.state == PlayerState.ACTIVE:
+            leaderboard.append(f"<@{user_id}>: **{player.score}** pts")
+
+    if leaderboard:
+        embed.add_field(
+            name="🏆 Live Leaderboard",
+            value="\n".join(leaderboard[:5]),
             inline=False,
         )
 
@@ -429,22 +512,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int):
             if channel_id in server_state.instances:
                 await send_host_message(channel_id, "main_round")
                 challenge = instance.start_main_round()
-
-                embed = nextcord.Embed(
-                    title=f"Round {instance.current_round}",
-                    description=challenge.question,
-                    color=nextcord.Color.purple(),
-                )
-                embed.add_field(
-                    name="Time Limit",
-                    value=f"{challenge.time_limit} seconds",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Game Type",
-                    value=challenge.challenge_type.value.replace("_", " ").title(),
-                    inline=True,
-                )
+                embed = create_round_embed(instance, challenge)
 
                 await channel.send(embed=embed)
 
@@ -956,20 +1024,7 @@ async def start_game(interaction: Interaction):
         if channel_id in server_state.instances:
             await send_host_message(channel_id, "main_round")
             challenge = instance.start_main_round()
-
-            embed = nextcord.Embed(
-                title=f"Round {instance.current_round}",
-                description=challenge.question,
-                color=nextcord.Color.purple(),
-            )
-            embed.add_field(
-                name="Time Limit", value=f"{challenge.time_limit} seconds", inline=True
-            )
-            embed.add_field(
-                name="Game Type",
-                value=challenge.challenge_type.value.replace("_", " ").title(),
-                inline=True,
-            )
+            embed = create_round_embed(instance, challenge)
 
             channel = guild.get_channel(channel_id)
             if channel:
@@ -1007,20 +1062,7 @@ async def start_next_round(interaction: Interaction):
 
     await send_host_message(channel_id, "main_round")
     challenge = instance.start_main_round()
-
-    embed = nextcord.Embed(
-        title=f"Round {instance.current_round}",
-        description=challenge.question,
-        color=nextcord.Color.purple(),
-    )
-    embed.add_field(
-        name="Time Limit", value=f"{challenge.time_limit} seconds", inline=True
-    )
-    embed.add_field(
-        name="Game Type",
-        value=challenge.challenge_type.value.replace("_", " ").title(),
-        inline=True,
-    )
+    embed = create_round_embed(instance, challenge)
 
     await interaction.response.send_message(embed=embed)
 
@@ -1070,18 +1112,14 @@ async def on_message(message: nextcord.Message):
     if channel_id in server_state.instances:
         instance = server_state.instances[channel_id]
         if instance.current_challenge and instance.state == GameState.IN_PROGRESS:
-            instance.submit_answer(str(user_id), message.content)
+            previous_ts = instance.submit_answer(
+                str(user_id), message.content, message.id
+            )
 
-            # embed = nextcord.Embed(
-            #     title="Answer Received",
-            #     description=f"<@{user_id}> submitted: {message.content}",
-            #     color=nextcord.Color.green(),
-            # )
-            # embed.set_footer(text="Answer will be evaluated when time runs out")
-
-            # await message.channel.send(embed=embed, delete_after=5)
-
-            await message.add_reaction("👍")
+            player = instance.players.get(str(user_id))
+            if player and instance.round_start_time:
+                response_time = time.time() - instance.round_start_time
+                await manage_answer_reactions(message, previous_ts, response_time)
 
 
 @bot.slash_command(name="admin", description="Admin commands for managing games")

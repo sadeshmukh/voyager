@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Dict, Any, Optional, Union, Callable
 
+from ai import verify
+
 # import typing as t
 import time
 import random
@@ -82,6 +84,7 @@ class Player:
     lives: int = 3
     current_answer: Optional[str] = None
     response_time: Optional[float] = None
+    previous_message_ts: Optional[str] = None  # track previous answer por unreact
 
 
 @dataclass
@@ -122,13 +125,13 @@ class Instance:
         self.end_time: Optional[float] = None
         self.config = config
 
-        # Game state
         self.current_round = 0
         self.current_challenge: Optional[Challenge] = None
         self.round_start_time: Optional[float] = None
         self.recent_game_types: List[GameType] = []
+        self.previous_leader: Optional[str] = None
 
-        # Challenge generation callback - framework provides this
+        # callback here is important for eventual custom challenges
         self.challenge_generator: Optional[Callable[[GameType], Challenge]] = None
 
     def set_challenge_generator(
@@ -231,14 +234,21 @@ class Instance:
         for player in self.players.values():
             player.current_answer = None
             player.response_time = None
+            player.previous_message_ts = None
 
         return self.current_challenge
 
-    def submit_answer(self, user_id: str, answer: str) -> None:
+    def submit_answer(
+        self, user_id: str, answer: str, message_ts: Optional[str] = None
+    ) -> Optional[str]:
         """Submit answer for the current challenge"""
         if user_id in self.players:
             player = self.players[user_id]
+
+            previous_ts = player.previous_message_ts
+
             player.current_answer = answer
+            player.previous_message_ts = message_ts
 
             # record response time for speed challenges
             if (
@@ -247,6 +257,9 @@ class Instance:
                 and self.round_start_time
             ):
                 player.response_time = time.time() - self.round_start_time
+
+            return previous_ts
+        return None
 
     def evaluate_current_challenge(self) -> Dict[str, Any]:
         """Evaluate the current challenge and return results"""
@@ -291,20 +304,22 @@ class Instance:
 
         else:
             correct_answers = self.current_challenge.correct_answer
-            if isinstance(
-                correct_answers, str
-            ):  # need to check why isinstance preferred by linter
+            if isinstance(correct_answers, str):
                 correct_answers = [correct_answers]
 
             for user_id in players_to_evaluate:
                 player = self.players[user_id]
-                if (
-                    player.current_answer
-                    and correct_answers
-                    and player.current_answer.lower().strip()
-                    in [ans.lower() for ans in correct_answers]
-                ):
-                    results["correct_players"].append(user_id)
+                if player.current_answer and correct_answers:
+                    is_correct = False
+                    for correct_answer in correct_answers:
+                        if verify(player.current_answer, correct_answer):
+                            is_correct = True
+                            break
+
+                    if is_correct:
+                        results["correct_players"].append(user_id)
+                    else:
+                        results["failed_players"].append(user_id)
                 else:
                     results["failed_players"].append(user_id)
 
@@ -317,3 +332,19 @@ class Instance:
         for user_id in results["correct_players"]:
             if user_id in self.players:
                 self.players[user_id].score += 10
+
+    def check_leader_change(self) -> Optional[str]:
+        """Check if there's a new leader and return their user_id"""
+        if not self.players:
+            return None
+
+        current_leader = max(self.players.items(), key=lambda x: x[1].score)[0]
+
+        if self.previous_leader != current_leader:
+            old_leader = self.previous_leader
+            self.previous_leader = current_leader
+            return (
+                current_leader if old_leader is not None else None
+            )  # can't announce first one
+
+        return None

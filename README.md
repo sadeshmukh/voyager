@@ -58,7 +58,7 @@ uv pip install -r pyproject.toml
 Run the bot:
 
 ```bash
-uv run app.py
+uv run discord.py
 ```
 
 ### Commands
@@ -124,6 +124,6 @@ Check out the [Slack Bolt Python docs](https://slack.dev/bolt-python/concepts) f
 
 - **`instance.py`**: Core game logic, extensible challenge system
     - ^^ independent of slack logic ^^
-- **`app.py`**: Slack bot commands and event handling  
+- **`discord.py`**: Discord bot commands and event handling  
 - **Game Flow**: INTRO → MAIN_ROUND → ELIMINATION → OUTRO
 - **Player States**: ACTIVE → AT_RISK → ELIMINATED/WINNER
