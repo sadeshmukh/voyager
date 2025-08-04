@@ -3,6 +3,7 @@ import typing as t
 import random
 import requests
 import logging
+import html
 
 trivia_categories = [
     {"id": 9, "name": "General Knowledge"},
@@ -46,8 +47,8 @@ def get_trivia_question(category: str = "") -> t.Tuple[str, str]:
             f"https://opentdb.com/api.php?amount=1&category={category_id}"
         )
         data = response.json()
-        question = data["results"][0]["question"]
-        answer = data["results"][0]["correct_answer"]
+        question = html.unescape(data["results"][0]["question"])
+        answer = html.unescape(data["results"][0]["correct_answer"])
         return question, [answer]  # for multiple correct answers
     except Exception:
         return "What is the capital of France?", ["Paris"]

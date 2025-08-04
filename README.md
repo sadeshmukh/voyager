@@ -1,12 +1,10 @@
 # Voyager
 
-A Slack bot for interactive party games within Slack (or Discord)?
-
-why does setuptools want to be a pain
+This initially started as a Slack bot, but has since been ported to Discord - Slack proved to be too restrictive and hard to work with.
 
 ## Too short, didn't read?
 
-Voyager creates dynamic party game instances in Slack! Players compete in various mini-games like quick math, trivia, speed challenges, and word games. Failed players face elimination rounds with different challenges. The system is designed to be extensible - adding new game types is easy!
+Voyager creates dynamic party game instances in Discord! Players compete in various mini-games like quick math, trivia, speed challenges, and word games. Failed players face elimination rounds with different challenges. The system is designed to be extensible - adding new game types is easy!
 
 ## Game Types
 
@@ -29,12 +27,9 @@ Time limit: 10 seconds
 
 Results:
 Correct: @a1 @b2  
-At Risk: @c3 @d4
+not: @c3 @d4
 
-ELIMINATION ROUND
-Players at risk: @c3 @d4
-Speed Challenge: First to respond wins!
-Failure means elimination!
+scores! stuff! will be done in the future
 ```
 
 ## Setup

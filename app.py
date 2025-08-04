@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import threading
+import html
 from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -163,6 +164,15 @@ def auto_evaluate_round(channel_id: str):
             f"**Time's up! Results for {results['challenge_type'].replace('_', ' ').title()}**\n"
         ]
 
+        # Show the correct answer
+        if instance.current_challenge and instance.current_challenge.correct_answer:
+            correct_answer = instance.current_challenge.correct_answer
+            if isinstance(correct_answer, list):
+                answer_text = " / ".join([html.unescape(str(ans)) for ans in correct_answer])
+            else:
+                answer_text = html.unescape(str(correct_answer))
+            message_parts.append(f"**Correct Answer:** {answer_text}")
+
         if results["correct_players"]:
             correct_mentions = " ".join(
                 [f"<@{uid}>" for uid in results["correct_players"]]
@@ -176,8 +186,9 @@ def auto_evaluate_round(channel_id: str):
             message_parts.append(f"**Incorrect/No Answer:** {failed_mentions}")
 
         game_state = instance.get_game_state()
+        rounds_left = instance.config.main_rounds - instance.current_round
         message_parts.append(
-            f"\n**Current Status:**\nActive players: {game_state['active_players']}"
+            f"\n**Current Status:**\nActive players: {game_state['active_players']}\nRounds left: {rounds_left}"
         )
 
         app.client.chat_postMessage(channel=channel_id, text="\n".join(message_parts))
@@ -684,6 +695,15 @@ def evaluate_challenge(ack, command, say, respond):
             f"**Results for {results['challenge_type'].replace('_', ' ').title()}**\n"
         ]
 
+        # Show the correct answer
+        if instance.current_challenge and instance.current_challenge.correct_answer:
+            correct_answer = instance.current_challenge.correct_answer
+            if isinstance(correct_answer, list):
+                answer_text = " / ".join([html.unescape(str(ans)) for ans in correct_answer])
+            else:
+                answer_text = html.unescape(str(correct_answer))
+            message_parts.append(f"**Correct Answer:** {answer_text}")
+
         if results["correct_players"]:
             correct_mentions = " ".join(
                 [f"<@{uid}>" for uid in results["correct_players"]]
@@ -697,8 +717,9 @@ def evaluate_challenge(ack, command, say, respond):
             message_parts.append(f"**Incorrect:** {failed_mentions}")
 
         game_state = instance.get_game_state()
+        rounds_left = instance.config.main_rounds - instance.current_round
         message_parts.append(
-            f"\n**Current Status:**\nActive players: {game_state['active_players']}"
+            f"\n**Current Status:**\nActive players: {game_state['active_players']}\nRounds left: {rounds_left}"
         )
 
         say("\n".join(message_parts))
