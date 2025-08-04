@@ -1,6 +1,8 @@
 # Voyager
 
-A Slack bot for interactive party games within Slack channels.
+A Slack bot for interactive party games within Slack (or Discord)?
+
+why does setuptools want to be a pain
 
 ## Too short, didn't read?
 
