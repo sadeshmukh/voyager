@@ -187,11 +187,20 @@ async def purge_game_channel(channel: nextcord.TextChannel) -> bool:
                 except Exception as e:
                     logger.debug(f"Failed to delete message in {channel.name}: {e}")
 
-        # OPTIMIZED PERMISSION RESET!
+        # ATOMIC PERMISSION RESET TO PREVENT FLASH
         try:
+            everyone_role = channel.guild.default_role
+            default_overwrites = {
+                everyone_role: nextcord.PermissionOverwrite(
+                    view_channel=False, send_messages=False
+                ),
+                channel.guild.me: nextcord.PermissionOverwrite(
+                    view_channel=True, send_messages=True, read_message_history=True
+                ),
+            }
             await channel.edit(
                 topic="Available game channel - waiting for assignment",
-                overwrites={},
+                overwrites=default_overwrites,
             )
             logger.debug(f"Reset permissions for {channel.name}")
         except Exception as e:
@@ -431,7 +440,8 @@ async def auto_evaluate_round(guild_id: int, channel_id: int):
             description=f"<@{new_leader}> has taken the lead!",
             color=nextcord.Color.gold(),
         )
-        await channel.send(embed=leader_embed)
+
+        await channel.send(f"<@{new_leader}>", embed=leader_embed)
 
     embed = nextcord.Embed(title="Round Results", color=nextcord.Color.blue())
 
@@ -541,24 +551,190 @@ def create_instance_with_dialogue(
     return instance
 
 
-@tasks.loop(seconds=30.0)
+class GameControlView(nextcord.ui.View):
+    """Interactive buttons to start, invite, or cancel a waiting game instance."""
+
+    def __init__(self, guild_id: int, channel_id: int):
+        super().__init__(timeout=None)
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+
+    @nextcord.ui.button(
+        label="Start Game", style=nextcord.ButtonStyle.green, custom_id="gc_start"
+    )
+    async def start_button(self, button: nextcord.ui.Button, interaction: Interaction):
+        server_state = get_server_state(self.guild_id)
+        if self.channel_id not in server_state.instances:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        instance = server_state.instances[self.channel_id]
+        if instance.state != GameState.WAITING:
+            await interaction.response.send_message(
+                "Game already started.", ephemeral=True
+            )
+            return
+
+        if len(instance.players) < 2:
+            await interaction.response.send_message(
+                "Need at least 2 players to start the game! Use the Invite button to invite more players.",
+                ephemeral=True,
+            )
+            return
+
+        if str(interaction.user.id) not in instance.players:
+            instance.add_player(str(interaction.user.id))
+            try:
+                await interaction.channel.set_permissions(
+                    interaction.user, read_messages=True, send_messages=True
+                )
+            except Exception:
+                pass
+
+        config = create_game_config(len(instance.players))
+        instance.start_game(config)
+        await send_host_message(self.channel_id, "intro")
+
+        embed = nextcord.Embed(
+            title="Game Started!",
+            description=f"{interaction.user.mention} started the game!",
+            color=nextcord.Color.green(),
+        )
+        embed.add_field(name="Players", value=str(len(instance.players)), inline=True)
+        await interaction.response.send_message(embed=embed)
+
+        async def start_round():
+            await asyncio.sleep(5)
+            if self.channel_id in server_state.instances:
+                await send_host_message(self.channel_id, "main_round")
+                challenge = instance.start_main_round()
+                round_embed = create_round_embed(instance, challenge)
+                await interaction.channel.send(embed=round_embed)
+                schedule_round_evaluation(
+                    self.guild_id, self.channel_id, challenge.time_limit
+                )
+
+        asyncio.create_task(start_round())
+
+    @nextcord.ui.button(
+        label="Invite Player", style=nextcord.ButtonStyle.blurple, custom_id="gc_invite"
+    )
+    async def invite_button(self, button: nextcord.ui.Button, interaction: Interaction):
+        server_state = get_server_state(self.guild_id)
+        if self.channel_id not in server_state.instances:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        instance = server_state.instances[self.channel_id]
+        if instance.state != GameState.WAITING:
+            await interaction.response.send_message(
+                "Cannot invite players - game has already started!", ephemeral=True
+            )
+            return
+
+        class InviteModal(nextcord.ui.Modal):
+            def __init__(self, channel_id: int):
+                super().__init__(title="Invite Player to Game")
+                self.channel_id = channel_id
+
+                self.user_mention = nextcord.ui.UserSelect(
+                    placeholder="Select a user to invite",
+                    min_values=1,
+                    max_values=1,
+                )
+
+                self.add_item(self.user_mention)
+
+            async def callback(self, interaction: Interaction):
+                user_input = self.user_mention.values[0]
+                user = None
+
+                if user_input.startswith("<@") and user_input.endswith(">"):
+                    user_id = user_input[2:-1]
+                    if user_id.startswith("!"):
+                        user_id = user_id[1:]
+                    try:
+                        user = interaction.guild.get_member(int(user_id))
+                    except ValueError:
+                        pass
+                else:
+                    try:
+                        user = interaction.guild.get_member(int(user_input))
+                    except ValueError:
+                        user = nextcord.utils.get(
+                            interaction.guild.members, name=user_input
+                        )
+
+                if not user:
+                    await interaction.response.send_message(
+                        "User not found! ",
+                        ephemeral=True,
+                    )
+                    return
+
+                if user.bot:
+                    await interaction.response.send_message(
+                        "Cannot invite bots to the game!", ephemeral=True
+                    )
+                    return
+
+                server_state = get_server_state(interaction.guild.id)
+                instance = server_state.instances[self.channel_id]
+
+                if str(user.id) in instance.players:
+                    await interaction.response.send_message(
+                        f"{user.mention} is already in this game!", ephemeral=True
+                    )
+                    return
+
+                instance.add_player(str(user.id))
+
+                try:
+                    await interaction.channel.set_permissions(
+                        user, read_messages=True, send_messages=True
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to set permissions for user {user.id}: {e}")
+
+                await interaction.response.send_message(
+                    f"✅ {user.mention} has been invited to the game! Total players: {len(instance.players)}"
+                )
+
+        await interaction.response.send_modal(InviteModal(self.channel_id))
+
+    @nextcord.ui.button(
+        label="Cancel Game", style=nextcord.ButtonStyle.red, custom_id="gc_cancel"
+    )
+    async def cancel_button(self, button: nextcord.ui.Button, interaction: Interaction):
+        server_state = get_server_state(self.guild_id)
+        if self.channel_id not in server_state.instances:
+            await interaction.response.send_message("Game not found.", ephemeral=True)
+            return
+
+        del server_state.instances[self.channel_id]
+        guild = interaction.guild
+        if guild:
+            await release_game_channel(guild, self.channel_id)
+        await interaction.response.send_message("Game cancelled and channel reset.")
+
+
+@tasks.loop(seconds=5.0)  # TODO: increase this if public
 async def process_waitlist():
     """Process waitlists for all servers"""
     for guild_id, server_state in SERVERS.items():
-        if len(server_state.waiting_users) >= 2:
+        if len(server_state.waiting_users) >= 1:
             guild = bot.get_guild(guild_id)
             if not guild:
                 continue
 
-            players = server_state.waiting_users[:4]
-            server_state.waiting_users[:4] = []
+            players = server_state.waiting_users[:1]
+            server_state.waiting_users[:1] = []
 
             if not server_state.initialized:
                 logger.debug(
                     f"Server {guild.name} not initialized, skipping waitlist processing"
                 )
                 continue
-
             game_name = f"game-{int(time.time())}"
 
             game_channel = await allocate_game_channel(guild, game_name)
@@ -601,15 +777,31 @@ async def process_waitlist():
 
             welcome_embed = nextcord.Embed(
                 title=f"Welcome to {game_name}!",
-                description="Use `/start` to begin the game when everyone is ready! The game will auto-progress through all rounds.",
+                description="A player has been allocated to this game instance. Use the buttons below to invite more players and start when ready!",
                 color=nextcord.Color.blue(),
             )
             welcome_embed.add_field(
-                name="Players",
+                name="Current Players",
                 value=", ".join([f"<@{p}>" for p in players]),
                 inline=False,
             )
-            await game_channel.send(embed=welcome_embed)
+            welcome_embed.add_field(
+                name="Status",
+                value="⏳ Waiting for more players (minimum 2 required to start)",
+                inline=False,
+            )
+            # must mention separately (embeds don't mention iirc?)
+            player_mentions = " ".join([f"<@{p}>" for p in players])
+            await game_channel.send(f"🎮 {player_mentions}", embed=welcome_embed)
+
+            view = GameControlView(guild_id, game_channel.id)
+            await game_channel.send(
+                "**Game Instance Created!**\n"
+                "• **Start Game** - Begin the game (requires 2+ players)\n"
+                "• **Invite Player** - Add more players to this game\n"
+                "• **Cancel Game** - Delete this game instance",
+                view=view,
+            )
 
 
 @process_waitlist.before_loop
@@ -733,14 +925,10 @@ async def on_guild_join(guild):
             )
             embed.add_field(
                 name="Status",
-                value="Ready for games!",
+                value="Ready!",
                 inline=True,
             )
-            embed.add_field(
-                name="Lobby Channel",
-                value=f"<#{lobby_channel.id}>",
-                inline=True,
-            )
+
             embed.add_field(
                 name="Game Channels",
                 value=f"{len(existing_channels)}/{server_state.max_channels}",
@@ -826,8 +1014,9 @@ async def join_game(interaction: Interaction):
 
     user_id = interaction.user.id
     if user_id in server_state.waiting_users:
+        position = server_state.waiting_users.index(user_id) + 1
         await interaction.response.send_message(
-            "You're already in the waitlist!", ephemeral=True
+            f"You're already in the waitlist! (Position #{position})", ephemeral=True
         )
         return
 
@@ -849,9 +1038,10 @@ async def join_game(interaction: Interaction):
     #     inline=True,
     # )
 
-    await interaction.response.send_message("You're on the waitlist!", ephemeral=True)
-
-    if len(server_state.waiting_users) >= 2:
+    await interaction.response.send_message(
+        "You're on the waitlist - an instance will be allocated soon!", ephemeral=True
+    )
+    if len(server_state.waiting_users) >= 1:
         await process_waitlist()
 
 
@@ -998,7 +1188,7 @@ async def start_game(interaction: Interaction):
                 player_embed.add_field(
                     name="Total Players", value=len(instance.players), inline=True
                 )
-                await channel.send(embed=player_embed)
+                await channel.send(f"<@{user_id}>", embed=player_embed)
         except Exception as e:
             logger.error(
                 f"Failed to send player joined message for user {user_id}: {e}"
@@ -1017,7 +1207,7 @@ async def start_game(interaction: Interaction):
     embed.add_field(name="Game Name", value=instance.name, inline=True)
     embed.add_field(name="Players", value=str(len(instance.players)), inline=True)
 
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(f"<@{user_id}>", embed=embed)
 
     async def start_first_round():
         await asyncio.sleep(5)
@@ -1158,11 +1348,21 @@ async def admin_create_channel(interaction: Interaction, name: str):
     try:
         category = await ensure_voyager_category(guild)
         channel_name = f"v-inst-{name.lower().replace(' ', '-')}"
+        overwrites = {
+            guild.default_role: nextcord.PermissionOverwrite(
+                view_channel=False, send_messages=False
+            ),
+            guild.me: nextcord.PermissionOverwrite(
+                view_channel=True, send_messages=True, read_message_history=True
+            ),
+        }
+
         channel = await guild.create_text_channel(
             channel_name,
             category=category,
             topic="Available game channel - waiting for assignment",
             reason=f"Admin-created game channel: {name}",
+            overwrites=overwrites,
         )
 
         server_state.all_game_channels.append(channel.id)
@@ -1293,7 +1493,7 @@ async def admin_invite_user(interaction: Interaction, user: nextcord.Member):
             welcome_embed.add_field(
                 name="Total Players", value=len(instance.players), inline=True
             )
-            await channel.send(embed=welcome_embed)
+            await channel.send(f"{user.mention}", embed=welcome_embed)
     except Exception as e:
         logger.error(f"Failed to send welcome message for user {user.id}: {e}")
 
@@ -1417,12 +1617,7 @@ async def initialize_app():
                 )
                 embed.add_field(
                     name="Status",
-                    value="✅ Ready for games!",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Lobby Channel",
-                    value=f"<#{lobby_channel.id}>",
+                    value="Ready!",
                     inline=True,
                 )
                 embed.add_field(
@@ -1471,7 +1666,7 @@ async def initialize_app():
     guild_tasks = [process_guild(guild) for guild in bot.guilds]
     await asyncio.gather(*guild_tasks, return_exceptions=True)  # gather, my beloved
 
-    logger.debug("Discord bot initialization complete")
+    logger.info("Discord bot initialization complete")
 
 
 if __name__ == "__main__":
