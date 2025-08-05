@@ -6,7 +6,7 @@ import nextcord
 logger = logging.getLogger("voyager_discord")
 
 
-_bot = None
+_bot: nextcord.Client = None
 
 
 def set_bot(bot):
@@ -30,6 +30,16 @@ async def process_waitlist():
             if not guild:
                 continue
 
+            # skip cleanup for now - the member cache seems unreliable
+            # we'll rely on the fact that users who just used /waitlist are definitely in the server
+            # TODO: ^^^
+            logger.debug(
+                f"Processing waitlist with {len(server_state.waiting_users)} users: {server_state.waiting_users}"
+            )
+
+            if len(server_state.waiting_users) < 1:
+                continue
+
             players = server_state.waiting_users[:1]
             server_state.waiting_users[:1] = []
 
@@ -49,13 +59,39 @@ async def process_waitlist():
 
             for player_id in players:
                 try:
+                    from cogs.events import assign_player_to_game_role
+
+                    logger.debug(
+                        f"Processing player_id: {player_id} (type: {type(player_id)})"
+                    )
+
+                    # get_member fetches from cache first
                     user = guild.get_member(player_id)
-                    if user:
-                        await game_channel.set_permissions(
-                            user, read_messages=True, send_messages=True
+                    if not user:
+                        logger.warning(
+                            f"User {player_id} not found in guild cache, trying Discord API..."
                         )
+                        try:
+                            user = await guild.fetch_member(player_id)
+                            logger.info(
+                                f"Successfully fetched user {player_id} from Discord API"
+                            )
+                        except Exception as fetch_error:
+                            logger.error(
+                                f"Failed to fetch user {player_id} from Discord API: {fetch_error}"
+                            )
+                            logger.warning(
+                                f"Available members: {[m.id for m in guild.members[:5]]}..."
+                            )
+                            continue
+
+                    success = await assign_player_to_game_role(
+                        guild, player_id, game_channel.id, game_name
+                    )
+                    if not success:
+                        logger.error(f"Failed to assign role to user {player_id}")
                 except Exception as e:
-                    logger.debug(f"Failed to set permissions for user {player_id}: {e}")
+                    logger.error(f"Failed to assign role to user {player_id}: {e}")
 
             instance = create_instance_with_dialogue(
                 guild_id, game_channel.id, game_name

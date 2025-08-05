@@ -260,6 +260,65 @@ class AdminCog(commands.Cog):
                 ephemeral=True,
             )
 
+    @admin_group.subcommand(
+        name="purgeroles",
+        description="Purge all game roles (Admin only)",
+    )
+    async def admin_purge_roles(self, interaction: Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                ERROR_RESPONSE["admin_required"],
+                ephemeral=True,
+            )
+            return
+
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message(
+                ERROR_RESPONSE["server_only"], ephemeral=True
+            )
+            return
+
+        from cogs.events import get_server_state
+
+        server_state = get_server_state(guild.id)
+
+        await interaction.response.send_message(
+            "Purging all game roles...", ephemeral=True
+        )
+
+        deleted_roles = []
+        failed_roles = []
+
+        # just straight up delete all game roles
+        # all temp
+        # I wish there was a tagging system for roles
+        for role in guild.roles:
+            if role.name.startswith("Voyaging "):
+                try:
+                    await role.delete(reason="Admin purge of game roles")
+                    deleted_roles.append(role.name)
+                    logger.info(f"Admin deleted game role: {role.name}")
+                except Exception as e:
+                    failed_roles.append(f"{role.name} (error: {e})")
+                    logger.error(f"Failed to delete role {role.name}: {e}")
+
+        server_state.game_roles.clear()
+
+        if deleted_roles:
+            response = f"**Successfully deleted {len(deleted_roles)} game roles:**\n"
+            for role_name in deleted_roles:
+                response += f"• {role_name}\n"
+        else:
+            response = "No game roles found to delete.\n"
+
+        if failed_roles:
+            response += f"\n**Failed to delete {len(failed_roles)} roles:**\n"
+            for role_info in failed_roles:
+                response += f"• {role_info}\n"
+
+        await interaction.followup.send(response)
+
 
 def setup(bot):
     bot.add_cog(AdminCog(bot))

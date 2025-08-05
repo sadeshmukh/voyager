@@ -31,6 +31,7 @@ class ServerState:
     available_game_channels: List[int] = None  # pool of v-inst- channels for reuse
     used_game_channels: Dict[int, str] = None  # channel_id -> game_name mapping
     all_game_channels: List[int] = None  # total 10 channels
+    game_roles: Dict[int, int] = None  # channel_id -> role_id mapping
     initialized: bool = SERVER_DEFAULTS[
         "initialized"
     ]  # whether the server has been automatically initialized
@@ -49,6 +50,8 @@ class ServerState:
             self.used_game_channels = {}
         if self.all_game_channels is None:
             self.all_game_channels = []
+        if self.game_roles is None:
+            self.game_roles = {}
 
 
 SERVERS: Dict[int, ServerState] = {}  # guild_id: ServerState
@@ -209,6 +212,22 @@ async def allocate_game_channel(
                     logger.debug(f"Could not update channel topic: {e}")
 
                 server_state.used_game_channels[channel_id] = game_name
+
+                role = await create_game_role(guild, channel_id, game_name)
+                if role:
+                    try:
+                        await channel.set_permissions(
+                            role, read_messages=True, send_messages=True
+                        )
+                        await channel.set_permissions(
+                            guild.default_role, read_messages=False, send_messages=False
+                        )
+                        logger.info(f"Set up channel permissions for role {role.name}")
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to set channel permissions for role {role.name}: {e}"
+                        )
+
                 logger.debug(
                     f"Allocated existing channel #{channel.name} for game {game_name}"
                 )
@@ -235,6 +254,8 @@ async def release_game_channel(guild: nextcord.Guild, channel_id: int) -> bool:
     if not channel:
         return False
 
+    await cleanup_game_role(guild, channel_id)
+
     # release to pool
     if await purge_game_channel(channel):
         server_state.available_game_channels.append(channel_id)
@@ -242,6 +263,162 @@ async def release_game_channel(guild: nextcord.Guild, channel_id: int) -> bool:
         return True
     else:
         logger.debug(f"Failed to purge channel #{channel.name}, not returning to pool")
+        return False
+
+
+async def create_game_role(
+    guild: nextcord.Guild, channel_id: int, game_name: str
+) -> Optional[nextcord.Role]:
+    server_state = get_server_state(guild.id)
+
+    try:
+        import random
+
+        fruits = [
+            "Apple",
+            "Banana",
+            "Orange",
+            "Grape",
+            "Strawberry",
+            "Peach",
+            "Mango",
+            "Pineapple",
+            "Kiwi",
+            "Blueberry",
+            "Cherry",
+            "Pear",
+            "Coconut",
+            "Lemon",
+            "Watermelon",
+        ]
+
+        random_fruit = random.choice(fruits)
+        role_name = f"Voyaging {random_fruit}"
+        role = await guild.create_role(
+            name=role_name,
+            color=nextcord.Color.blue(),
+            reason=f"Auto-created role for game: {game_name}",
+            mentionable=True,
+            hoist=True,
+        )
+
+        server_state.game_roles[channel_id] = role.id
+        logger.info(f"Created game role {role.name} for channel {channel_id}")
+
+        return role
+
+    except Exception as e:
+        logger.error(f"Failed to create game role for channel {channel_id}: {e}")
+        return None
+
+
+async def get_or_create_game_role(
+    guild: nextcord.Guild, channel_id: int, game_name: str
+) -> Optional[nextcord.Role]:
+    server_state = get_server_state(guild.id)
+
+    if channel_id in server_state.game_roles:
+        role_id = server_state.game_roles[channel_id]
+        role = guild.get_role(role_id)
+        if role:
+            return role
+
+    return await create_game_role(guild, channel_id, game_name)
+
+
+async def assign_player_to_game_role(
+    guild: nextcord.Guild, user_id: int, channel_id: int, game_name: str
+) -> bool:
+    try:
+        if isinstance(user_id, str):
+            user_id = int(user_id)
+
+        user = guild.get_member(user_id)
+        if not user:
+            logger.error(f"User {user_id} not found in guild {guild.name}")
+            logger.error(f"Guild member count: {guild.member_count}")
+            logger.error(f"Guild ID: {guild.id}")
+
+            try:
+                user = await guild.fetch_member(user_id)
+                logger.info(f"Successfully fetched user {user_id} from Discord API")
+            except Exception as fetch_error:
+                logger.error(
+                    f"Failed to fetch user {user_id} from Discord API: {fetch_error}"
+                )
+                return False
+
+        role = await get_or_create_game_role(guild, channel_id, game_name)
+        if not role:
+            logger.error(f"Failed to get/create game role for channel {channel_id}")
+            return False
+
+        if role not in user.roles:
+            await user.add_roles(role, reason=f"Player joined game: {game_name}")
+            logger.info(
+                f"Assigned role {role.name} to user {user_id} for game {game_name}"
+            )
+        else:
+            logger.debug(f"User {user_id} already has role {role.name}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to assign role to user {user_id}: {e}")
+        return False
+
+
+async def remove_player_from_game_role(
+    guild: nextcord.Guild, user_id: int, channel_id: int
+) -> bool:
+    try:
+        server_state = get_server_state(guild.id)
+
+        if channel_id not in server_state.game_roles:
+            logger.debug(f"No game role found for channel {channel_id}")
+            return True
+
+        role_id = server_state.game_roles[channel_id]
+        role = guild.get_role(role_id)
+        if not role:
+            logger.debug(f"Game role {role_id} not found, removing from state")
+            del server_state.game_roles[channel_id]
+            return True
+
+        user = guild.get_member(user_id)
+        if not user:
+            logger.debug(f"User {user_id} not found in guild {guild.name}")
+            return True
+
+        if role in user.roles:
+            await user.remove_roles(role, reason="Player left game")
+            logger.info(f"Removed role {role.name} from user {user_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to remove role from user {user_id}: {e}")
+        return False
+
+
+async def cleanup_game_role(guild: nextcord.Guild, channel_id: int) -> bool:
+    try:
+        server_state = get_server_state(guild.id)
+
+        if channel_id not in server_state.game_roles:
+            return True
+
+        role_id = server_state.game_roles[channel_id]
+        role = guild.get_role(role_id)
+
+        if role:
+            await role.delete(reason="Game ended, cleaning up role")
+            logger.info(f"Deleted game role {role.name} for channel {channel_id}")
+
+        del server_state.game_roles[channel_id]
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to cleanup game role for channel {channel_id}: {e}")
         return False
 
 
@@ -263,6 +440,7 @@ async def initialize_app(bot):
                 "manage_channels",
                 "manage_messages",
                 "embed_links",
+                "manage_roles",
             ]
 
             missing_permissions = []
@@ -286,6 +464,7 @@ async def initialize_app(bot):
                                 f"• Manage Channels\n"
                                 f"• Manage Messages\n"
                                 f"• Embed Links\n"
+                                f"• Manage Roles\n"
                                 f"Next Steps: Grant the missing permissions and restart the bot"
                             )
                             logger.debug(f"Sent permission warning to {guild.name}")
@@ -431,6 +610,7 @@ class EventsCog(commands.Cog):
                 "manage_channels",
                 "manage_messages",
                 "embed_links",
+                "manage_roles",
             ]
 
             missing_permissions = []
@@ -454,6 +634,7 @@ class EventsCog(commands.Cog):
                                 f"• Manage Channels\n"
                                 f"• Manage Messages\n"
                                 f"• Embed Links\n"
+                                f"• Manage Roles\n"
                                 f"Next Steps: Grant the missing permissions and restart the bot"
                             )
                             logger.debug(f"Sent permission warning to {guild.name}")

@@ -36,6 +36,8 @@ class GameType(Enum):
     MEMORY_GAME = "memory_game"
     COLLABORATIVE = "collaborative"
     CUSTOM = "custom"
+    TEXT_MODIFICATION = "text_modification"
+    EMOJI_CHALLENGE = "emoji_challenge"
 
 
 # class EliminationMode(Enum):
@@ -103,6 +105,9 @@ class GameConfig:
                 GameType.TRIVIA,
                 GameType.SPEED_CHALLENGE,
                 GameType.RIDDLE,
+                GameType.MEMORY_GAME,
+                GameType.TEXT_MODIFICATION,
+                GameType.EMOJI_CHALLENGE,
             ]
             if self.player_count >= 5:
                 self.available_game_types.append(GameType.COLLABORATIVE)
@@ -303,6 +308,18 @@ class Instance:
             else:
                 results["failed_players"] = players_to_evaluate
 
+        elif self.current_challenge.metadata.get("emoji_challenge"):
+            expected_set = set(self.current_challenge.correct_answer or [])
+            for user_id in players_to_evaluate:
+                player = self.players[user_id]
+                if player.current_answer:
+                    user_set = set(player.current_answer.split())
+                    if expected_set.issubset(user_set):
+                        results["correct_players"].append(user_id)
+                    else:
+                        results["failed_players"].append(user_id)
+                else:
+                    results["failed_players"].append(user_id)
         else:
             correct_answers = self.current_challenge.correct_answer
             if isinstance(correct_answers, str):

@@ -19,6 +19,34 @@ from config import (
     ERROR_RESPONSE,
 )
 import random
+import string
+
+try:
+    import emoji as _emoji_lib  # type: ignore
+
+    def _get_emojis_matching(letter: str) -> list[str]:
+        """Return list of emoji characters whose name contains a given letter."""
+        letter = letter.lower()
+        matches = []
+        for char, data in _emoji_lib.EMOJI_DATA.items():
+            # emoji names can be list or str depending on lib version
+            name = data.get("en", data.get("name", "")).lower()
+            if letter in name:
+                matches.append(char)
+        return matches
+
+except Exception:  # pragma: no cover – fallback if emoji lib missing
+    _emoji_lib = None
+
+    def _get_emojis_matching(letter: str) -> list[str]:
+        fallback_map = {
+            "a": ["🍎", "🐜", "🅰️"],
+            "b": ["🐝", "🍌", "🅱️"],
+            "c": ["🐱", "🌜", "🌶️"],
+            "d": ["🐶", "🎯", "💃"],
+        }
+        return fallback_map.get(letter.lower(), ["😀"])
+
 
 logger = logging.getLogger("voyager_discord")
 
@@ -61,11 +89,24 @@ class GameControlView(nextcord.ui.View):
         if str(interaction.user.id) not in instance.players:
             instance.add_player(str(interaction.user.id))
             try:
-                await interaction.channel.set_permissions(
-                    interaction.user, read_messages=True, send_messages=True
+                from cogs.events import assign_player_to_game_role
+
+                success = await assign_player_to_game_role(
+                    interaction.guild,
+                    interaction.user.id,
+                    self.channel_id,
+                    instance.name,
                 )
-            except Exception:
-                pass
+                if success:
+                    logger.info(
+                        f"Successfully assigned role to user {interaction.user.id} for game {instance.name}"
+                    )
+                else:
+                    logger.error(f"Failed to assign role to user {interaction.user.id}")
+            except Exception as e:
+                logger.error(
+                    f"Failed to assign role to user {interaction.user.id}: {e}"
+                )
 
         config = create_game_config(len(instance.players))
         instance.start_game(config)
@@ -122,16 +163,18 @@ class GameControlView(nextcord.ui.View):
                 super().__init__(title="Invite Player to Game")
                 self.channel_id = channel_id
 
-                self.user_mention = nextcord.ui.UserSelect(
-                    placeholder="Select a user to invite",
-                    min_values=1,
-                    max_values=1,
+                self.user_input = nextcord.ui.TextInput(
+                    label="User to invite",
+                    placeholder="Enter username, user ID, or @mention",
+                    required=True,
+                    min_length=1,
+                    max_length=100,
                 )
 
-                self.add_item(self.user_mention)
+                self.add_item(self.user_input)
 
             async def callback(self, interaction: Interaction):
-                user_input = self.user_mention.values[0]
+                user_input = self.user_input.value.strip()
                 user = None
 
                 if user_input.startswith("<@") and user_input.endswith(">"):
@@ -166,6 +209,7 @@ class GameControlView(nextcord.ui.View):
                 server_state = get_server_state(interaction.guild.id)
                 instance = server_state.instances[self.channel_id]
 
+                # check if user is already in CURRENT instance
                 if str(user.id) in instance.players:
                     await interaction.response.send_message(
                         ERROR_RESPONSE["already_in_game"].format(
@@ -175,14 +219,35 @@ class GameControlView(nextcord.ui.View):
                     )
                     return
 
+                # check if user is already in instance
+                for other_channel_id, other_instance in server_state.instances.items():
+                    if (
+                        other_channel_id != self.channel_id
+                        and str(user.id) in other_instance.players
+                    ):
+                        await interaction.response.send_message(
+                            f"{user.mention} is already in another game: {other_instance.name} in <#{other_channel_id}>\n"
+                            f"Please ask them to finish that game first.",
+                            ephemeral=True,
+                        )
+                        return
+
                 instance.add_player(str(user.id))
 
                 try:
-                    await interaction.channel.set_permissions(
-                        user, read_messages=True, send_messages=True
+                    from cogs.events import assign_player_to_game_role
+
+                    success = await assign_player_to_game_role(
+                        interaction.guild, user.id, self.channel_id, instance.name
                     )
+                    if success:
+                        logger.info(
+                            f"Successfully assigned role to user {user.id} for game {instance.name}"
+                        )
+                    else:
+                        logger.error(f"Failed to assign role to user {user.id}")
                 except Exception as e:
-                    logger.error(f"Failed to set permissions for user {user.id}: {e}")
+                    logger.error(f"Failed to assign role to user {user.id}: {e}")
 
                 await interaction.response.send_message(
                     f"✅ {user.mention} has been invited to the game! Total players: {len(instance.players)}"
@@ -243,21 +308,123 @@ def create_round_embed(instance: Instance, challenge: Challenge) -> nextcord.Emb
 
 def generate_challenge(game_type: GameType) -> Challenge:
     if game_type == GameType.QUICK_MATH:
-        a, b = random.randint(10, 99), random.randint(10, 99)
+        op_symbol, op_func = random.choice(
+            [
+                ("+", lambda x, y: x + y),
+                ("-", lambda x, y: x - y),
+                ("×", lambda x, y: x * y),
+                ("÷", lambda x, y: x // y),
+            ]
+        )
+
+        if op_symbol == "÷":
+            b = random.randint(2, 12)
+            a = random.randint(2, 20)
+            c = a * b
+            a, b, c = c, a, b  # goofy logic I know but it works
+        elif op_symbol == "×":
+            a, b = random.randint(2, 15), random.randint(2, 15)
+        else:
+            a, b = random.randint(10, 99), random.randint(10, 99)
+
+        answer = op_func(a, b)
+
         return Challenge(
             challenge_type=game_type,
-            question=f"What's {a} + {b}?",
-            correct_answer=str(a + b),
-            time_limit=10,
+            question=f"What's {a} {op_symbol} {b}?",
+            correct_answer=str(answer),
+            time_limit=12 if op_symbol in ["×", "÷"] else 8,
         )
 
     elif game_type == GameType.SPEED_CHALLENGE:
+        speed_prompts = [
+            "Type the word 'SPEED' as fast as you can!",
+            "First to type 'SECOND' wins!",
+            "Race to type 'DASH'!",
+            "Be the first to type 'ZOOM'!",
+            "Type 'I LOSE' to win this round!",
+            "Type 'SAHIL THE GOAT' as fast as you can!",
+        ]
+
+        prompt = random.choice(speed_prompts)
+        target_word = prompt.split("'")[1]  # extract the word inside quotes
+
         return Challenge(
             challenge_type=game_type,
-            question="First to respond wins! Type ANYTHING and hit enter!",
-            correct_answer=None,
-            time_limit=5,
-            metadata={"speed_based": True},
+            question=prompt,
+            correct_answer=[target_word.lower()],
+            time_limit=6,
+            metadata={"speed_based": True, "target_word": target_word.lower()},
+        )
+
+    elif game_type == GameType.TEXT_MODIFICATION:
+        words = [
+            "hello",
+            "voyager",
+            "discord",
+            "gaming",
+            "python",
+            "challenge",
+            "quizzer",
+        ]
+        word = random.choice(words)
+
+        mod_type = random.choice(["reverse", "alternating_case"])
+
+        if mod_type == "reverse":
+            question = f"Type '{word}' backwards"
+            answer = word[::-1]
+        else:  # alternating_case
+
+            def _alt(s: str) -> str:
+                out = []
+                for idx, ch in enumerate(s):
+                    out.append(ch.upper() if idx % 2 == 0 else ch.lower())
+                return "".join(out)
+
+            question = (
+                f"Type '{word}' with alternating UPPER/lower case (start with UPPER)"
+            )
+            answer = _alt(word)
+
+        return Challenge(
+            challenge_type=game_type,
+            question=question,
+            correct_answer=[answer],
+            time_limit=15,
+        )
+
+    elif game_type == GameType.MEMORY_GAME:
+        seq_len = random.randint(3, 6)
+        sequence = [str(random.randint(1, 9)) for _ in range(seq_len)]
+        display = " ".join(sequence)
+        return Challenge(
+            challenge_type=game_type,
+            question=f"Remember this sequence: {display}",
+            correct_answer=[display],
+            time_limit=seq_len * 3 + 4,
+            metadata={"memory_based": True, "sequence": sequence},
+        )
+
+    elif game_type == GameType.EMOJI_CHALLENGE:
+        letter = random.choice(string.ascii_lowercase)
+        emoji_choices = _get_emojis_matching(letter)
+        # ensure we have at least a few emojis; fallback if not
+        if len(emoji_choices) < 3:
+            emoji_choices = emoji_choices + ["😀", "😎", "😉"]
+
+        selected = random.sample(emoji_choices, k=min(5, len(emoji_choices)))
+        question = (
+            f"Type ALL of the following emojis in ANY order: {' '.join(selected)}"
+            f"\n(They each contain the letter '{letter}' in their name)"
+        )
+
+        return Challenge(
+            challenge_type=game_type,
+            question=question,
+            correct_answer=selected,
+            time_limit=25,
+            metadata={"emoji_challenge": True, "letter": letter},
         )
 
     elif game_type == GameType.TRIVIA:
@@ -268,7 +435,6 @@ def generate_challenge(game_type: GameType) -> Challenge:
             correct_answer=answers,
             time_limit=20,
         )
-
     elif game_type == GameType.RIDDLE:
         riddle, answer = get_riddle()
         return Challenge(
@@ -276,15 +442,6 @@ def generate_challenge(game_type: GameType) -> Challenge:
             question=riddle,
             correct_answer=[answer],
             time_limit=30,
-        )
-
-    elif game_type == GameType.MEMORY_GAME:
-        return Challenge(
-            challenge_type=game_type,
-            question="I'll show you a sequence. Remember it and type it back!",
-            correct_answer=None,
-            time_limit=15,
-            metadata={"memory_based": True},
         )
 
     elif game_type == GameType.COLLABORATIVE:
@@ -534,6 +691,12 @@ class GameCog(commands.Cog):
             return
 
         user_id = interaction.user.id
+
+        logger.debug(
+            f"User {user_id} ({interaction.user.name}) attempting to join waitlist"
+        )
+        logger.debug(f"Current waiting users: {server_state.waiting_users}")
+
         if user_id in server_state.waiting_users:
             position = server_state.waiting_users.index(user_id) + 1
             await interaction.response.send_message(
@@ -542,12 +705,27 @@ class GameCog(commands.Cog):
             )
             return
 
+        for channel_id, instance in server_state.instances.items():
+            if str(user_id) in instance.players:
+                await interaction.response.send_message(
+                    f"You are already in a game! Please finish your current game first.\n"
+                    f"Game: {instance.name} in <#{channel_id}>",
+                    ephemeral=True,
+                )
+                return
+
         server_state.waiting_users.append(user_id)
+        logger.debug(
+            f"Added user {user_id} to waitlist. New count: {len(server_state.waiting_users)}"
+        )
 
         await interaction.response.send_message(
             ERROR_RESPONSE["on_waitlist"],
             ephemeral=True,
         )
+
+        await asyncio.sleep(1)
+
         if len(server_state.waiting_users) >= 1:
             from cogs.tasks import process_waitlist, set_bot
 
@@ -692,10 +870,35 @@ class GameCog(commands.Cog):
 
         instance = server_state.instances[channel_id]
 
+        # check if user is already in instance
+        for other_channel_id, other_instance in server_state.instances.items():
+            if (
+                other_channel_id != channel_id
+                and str(user_id) in other_instance.players
+            ):
+                await interaction.followup.send(
+                    f"You are already in another game: {other_instance.name} in <#{other_channel_id}>\n"
+                    f"Please finish that game first before starting a new one.",
+                    ephemeral=True,
+                )
+                return
+
         if str(user_id) not in instance.players:
             instance.add_player(str(user_id))
 
             try:
+                from cogs.events import assign_player_to_game_role
+
+                success = await assign_player_to_game_role(
+                    guild, user_id, channel_id, instance.name
+                )
+                if success:
+                    logger.info(
+                        f"Successfully assigned role to user {user_id} for game {instance.name}"
+                    )
+                else:
+                    logger.error(f"Failed to assign role to user {user_id}")
+
                 channel = guild.get_channel(channel_id)
                 if channel:
                     player_embed = nextcord.Embed(
@@ -707,9 +910,11 @@ class GameCog(commands.Cog):
                         name="Total Players", value=len(instance.players), inline=True
                     )
                     await channel.send(f"<@{user_id}>", embed=player_embed)
+                else:
+                    logger.error(f"Could not find game channel {channel_id}")
             except Exception as e:
                 logger.error(
-                    f"Failed to send player joined message for user {user_id}: {e}"
+                    f"Failed to assign role or send message for user {user_id}: {e}"
                 )
 
         config = create_game_config(len(instance.players))
