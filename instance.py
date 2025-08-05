@@ -3,6 +3,7 @@ from enum import Enum
 from typing import List, Dict, Any, Optional, Union, Callable
 
 from ai import verify
+from config import SCORING, DEFAULT_LIVES, DEFAULT_TIME_LIMIT
 
 # import typing as t
 import time
@@ -58,7 +59,7 @@ class Challenge:
     challenge_type: GameType
     question: str
     correct_answer: Optional[Union[str, List[str]]] = None
-    time_limit: int = 30  # seconds
+    time_limit: int = DEFAULT_TIME_LIMIT  # seconds
     metadata: Dict[str, Any] = None  # certain challenges require metadata
 
     def __post_init__(self):
@@ -81,7 +82,7 @@ class Player:
     user_id: str
     state: PlayerState = PlayerState.ACTIVE
     score: int = 0
-    lives: int = 3
+    lives: int = DEFAULT_LIVES
     current_answer: Optional[str] = None
     response_time: Optional[float] = None
     previous_message_ts: Optional[str] = None  # track previous answer por unreact
@@ -331,7 +332,7 @@ class Instance:
         """Apply challenge results to player states"""
         for user_id in results["correct_players"]:
             if user_id in self.players:
-                self.players[user_id].score += 10
+                self.players[user_id].score += SCORING["correct_answer_points"]
 
     def check_leader_change(self) -> Optional[str]:
         """Check if there's a new leader and return their user_id"""

@@ -1,5 +1,6 @@
 import requests
 from logging import getLogger
+from config import AI_ENDPOINT
 
 logger = getLogger("voyager_ai")
 
@@ -13,7 +14,7 @@ def verify(given_answer: str, correct_answer: str) -> bool:
 
 
 def verify_ai(given_answer: str, correct_answer: str) -> bool:
-    endpoint = "https://ai.hackclub.com/chat/completions"
+    endpoint = AI_ENDPOINT
     response = requests.post(
         endpoint,
         json={

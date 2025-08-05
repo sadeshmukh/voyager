@@ -4,43 +4,17 @@ import random
 import requests
 import logging
 import html
-
-trivia_categories = [
-    {"id": 9, "name": "General Knowledge"},
-    {"id": 10, "name": "Entertainment: Books"},
-    {"id": 11, "name": "Entertainment: Film"},
-    {"id": 12, "name": "Entertainment: Music"},
-    {"id": 13, "name": "Entertainment: Musicals & Theatres"},
-    {"id": 14, "name": "Entertainment: Television"},
-    {"id": 15, "name": "Entertainment: Video Games"},
-    {"id": 16, "name": "Entertainment: Board Games"},
-    {"id": 17, "name": "Science & Nature"},
-    {"id": 18, "name": "Science: Computers"},
-    {"id": 19, "name": "Science: Mathematics"},
-    {"id": 20, "name": "Mythology"},
-    {"id": 21, "name": "Sports"},
-    {"id": 22, "name": "Geography"},
-    {"id": 23, "name": "History"},
-    {"id": 24, "name": "Politics"},
-    {"id": 25, "name": "Art"},
-    {"id": 26, "name": "Celebrities"},
-    {"id": 27, "name": "Animals"},
-    {"id": 28, "name": "Vehicles"},
-    {"id": 29, "name": "Entertainment: Comics"},
-    {"id": 30, "name": "Science: Gadgets"},
-    {"id": 31, "name": "Entertainment: Japanese Anime & Manga"},
-    {"id": 32, "name": "Entertainment: Cartoon & Animations"},
-]
+from config import TRIVIA_CATEGORIES, RIDDLES_CSV_PATH
 
 
 def get_trivia_question(category: str = "") -> t.Tuple[str, str]:
     try:
         if not category:
-            category_info = random.choice(trivia_categories)
+            category_info = random.choice(TRIVIA_CATEGORIES)
             category_id = category_info["id"]
         else:
             # assume it's an index into trivia_categories
-            category_info = trivia_categories[int(category)]
+            category_info = TRIVIA_CATEGORIES[int(category)]
             category_id = category_info["id"]
 
         response = requests.get(
@@ -58,7 +32,7 @@ def get_riddle() -> t.Tuple[str, str]:
     # couldn't find a decent api, so read from CSV
     # csv is in gitignore but source is here: https://github.com/crawsome/riddles/blob/main/riddles.csv
     try:
-        with open("riddles.csv", "r", encoding="utf-8") as file:
+        with open(RIDDLES_CSV_PATH, "r", encoding="utf-8") as file:
             reader = csv.reader(file)
             riddle = random.choice(list(reader))
         answer = riddle[1]

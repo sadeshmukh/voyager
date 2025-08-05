@@ -28,6 +28,9 @@ from config import (
     multi_player_config,
     host_dialogue,
     dialogue_timing,
+    MAX_CHANNELS,
+    RESPONSE_TIME_THRESHOLDS,
+    SERVER_DEFAULTS,
 )
 import random
 
@@ -67,8 +70,8 @@ class ServerState:
     available_game_channels: List[int] = None  # pool of v-inst- channels for reuse
     used_game_channels: Dict[int, str] = None  # channel_id -> game_name mapping
     all_game_channels: List[int] = None  # total 10 channels
-    initialized: bool = False  # whether the server has been automatically initialized
-    max_channels: int = 10
+    initialized: bool = SERVER_DEFAULTS["initialized"]  # whether the server has been automatically initialized
+    max_channels: int = SERVER_DEFAULTS["max_channels"]
 
     def __post_init__(self):
         if self.waiting_users is None:
@@ -96,7 +99,7 @@ SERVERS: Dict[int, ServerState] = {}  # guild_id: ServerState
 def get_server_state(guild_id: int) -> ServerState:
     """Get or create server state"""
     if guild_id not in SERVERS:
-        SERVERS[guild_id] = ServerState(guild_id=guild_id, max_channels=10)
+        SERVERS[guild_id] = ServerState(guild_id=guild_id, max_channels=SERVER_DEFAULTS["max_channels"])
 
     return SERVERS[guild_id]
 
@@ -160,7 +163,7 @@ async def discover_existing_game_channels(
             )
 
     game_channels.sort(key=lambda c: c.created_at)
-    game_channels = game_channels[: server_state.max_channels]
+    game_channels = game_channels[: MAX_CHANNELS]
 
     server_state.all_game_channels = [c.id for c in game_channels]
 
@@ -324,9 +327,9 @@ async def manage_answer_reactions(
         except (nextcord.NotFound, nextcord.HTTPException, ValueError):
             pass  # message probably already unreacted?
 
-    if response_time <= 3:
+    if response_time <= RESPONSE_TIME_THRESHOLDS["fast"]:
         await message.add_reaction("⚡")
-    elif response_time <= 8:
+    elif response_time <= RESPONSE_TIME_THRESHOLDS["medium"]:
         await message.add_reaction("👍")
     else:
         await message.add_reaction("🐌")
@@ -931,7 +934,7 @@ async def on_guild_join(guild):
 
             embed.add_field(
                 name="Game Channels",
-                value=f"{len(existing_channels)}/{server_state.max_channels}",
+                value=f"{len(existing_channels)}/{MAX_CHANNELS}",
                 inline=True,
             )
             embed.add_field(
@@ -1097,7 +1100,7 @@ async def status(interaction: Interaction):
         )
         embed.add_field(
             name="Available Game Channels",
-            value=f"{len(server_state.available_game_channels)}/{server_state.max_channels}",
+            value=f"{len(server_state.available_game_channels)}/{MAX_CHANNELS}",
             inline=True,
         )
     else:
@@ -1337,9 +1340,9 @@ async def admin_create_channel(interaction: Interaction, name: str):
     server_state = get_server_state(guild.id)
 
     total_channels = len(server_state.all_game_channels)
-    if total_channels >= server_state.max_channels:
+    if total_channels >= MAX_CHANNELS:
         await interaction.response.send_message(
-            f"Maximum number of game channels ({server_state.max_channels}) reached! Cannot create more channels.",
+            f"Maximum number of game channels ({MAX_CHANNELS}) reached! Cannot create more channels.",
             ephemeral=True,
         )
         return
@@ -1377,7 +1380,7 @@ async def admin_create_channel(interaction: Interaction, name: str):
         embed.add_field(name="Status", value="Available for games", inline=True)
         embed.add_field(
             name="Channels Total",
-            value=f"{len(server_state.all_game_channels)}/{server_state.max_channels}",
+            value=f"{len(server_state.all_game_channels)}/{MAX_CHANNELS}",
             inline=True,
         )
 
@@ -1622,7 +1625,7 @@ async def initialize_app():
                 )
                 embed.add_field(
                     name="Game Channels",
-                    value=f"{len(existing_channels)}/{server_state.max_channels}",
+                    value=f"{len(existing_channels)}/{MAX_CHANNELS}",
                     inline=True,
                 )
                 embed.add_field(
