@@ -32,6 +32,9 @@ class ServerState:
     used_game_channels: Dict[int, str] = None  # channel_id -> game_name mapping
     all_game_channels: List[int] = None  # total 10 channels
     game_roles: Dict[int, int] = None  # channel_id -> role_id mapping
+    pending_waitlist_interactions: Dict[int, "nextcord.Interaction"] = (
+        None  # user_id -> interaction mapping
+    )
     initialized: bool = SERVER_DEFAULTS[
         "initialized"
     ]  # whether the server has been automatically initialized
@@ -52,6 +55,8 @@ class ServerState:
             self.all_game_channels = []
         if self.game_roles is None:
             self.game_roles = {}
+        if self.pending_waitlist_interactions is None:
+            self.pending_waitlist_interactions = {}
 
 
 SERVERS: Dict[int, ServerState] = {}  # guild_id: ServerState
@@ -575,11 +580,30 @@ class EventsCog(commands.Cog):
     async def cleanup(self):
         """Clean up running timers and tasks"""
         for guild_id, server_state in SERVERS.items():
+            guild = self.bot.get_guild(guild_id)
+
             for timer in server_state.round_timers.values():
                 if timer and not timer.done():
                     timer.cancel()
                     logger.debug(f"Cancelled round timer for guild {guild_id}")
             server_state.round_timers.clear()
+
+            numroles = len(server_state.game_roles)
+            if guild:
+                for role_id in server_state.game_roles.copy().values():
+                    try:
+                        role = guild.get_role(role_id)
+                        if role:
+                            await role.delete(reason="Bot shutdown cleanup")
+                            logger.debug(
+                                f"Deleted game role {role.name} during shutdown cleanup"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to delete role {role_id} during shutdown: {e}"
+                        )
+                server_state.game_roles.clear()
+            logger.info(f"Cleaned up {numroles} game roles for guild {guild_id}")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -758,8 +782,74 @@ class EventsCog(commands.Cog):
         channel_id = message.channel.id
         user_id = message.author.id
 
+        if channel_id == server_state.lobby_channel_id and message.mentions:
+            try:
+                await message.delete()
+                logger.debug(f"Deleted @mention invite in lobby from user {user_id}")
+
+                user_game_channel = None
+                user_game_instance = None
+
+                for game_channel_id, instance in server_state.instances.items():
+                    if str(user_id) in instance.players:
+                        user_game_channel = game_channel_id
+                        user_game_instance = instance
+                        break
+
+                if user_game_channel and user_game_instance:
+                    # invite all mentioned users to the sender's current game
+                    game_channel = message.guild.get_channel(user_game_channel)
+                    if game_channel:
+                        for mentioned_user in message.mentions:
+                            if mentioned_user.bot:
+                                continue
+
+                            # check if mentioned user is already in any game
+                            already_in_game = False
+                            for other_instance in server_state.instances.values():
+                                if str(mentioned_user.id) in other_instance.players:
+                                    already_in_game = True
+                                    break
+
+                            if (
+                                not already_in_game
+                                and str(mentioned_user.id)
+                                not in user_game_instance.players
+                            ):
+                                user_game_instance.add_player(str(mentioned_user.id))
+
+                                success = await assign_player_to_game_role(
+                                    message.guild,
+                                    mentioned_user.id,
+                                    user_game_channel,
+                                    user_game_instance.name,
+                                )
+                                if success:
+                                    logger.debug(
+                                        f"Successfully assigned role to mentioned user {mentioned_user.id}"
+                                    )
+
+                                    await game_channel.send(
+                                        f"{mentioned_user.mention} has been invited by {message.author.mention}!"
+                                    )
+                                else:
+                                    logger.error(
+                                        f"Failed to assign role to mentioned user {mentioned_user.id}"
+                                    )
+
+            except Exception as e:
+                logger.error(f"Error handling @mention in lobby: {e}")
+
         if channel_id in server_state.instances:
             instance = server_state.instances[channel_id]
+            if instance.state == GameState.WAITING:
+                logger.debug(message.content, message.mentions, instance.players)
+                # check for mentions
+                for mention in message.mentions:
+                    if mention.id not in instance.players:
+                        await instance.add_player(mention.id)
+                        await message.channel.send(f"{mention.mention} has been added!")
+
             if instance.current_challenge and instance.state == GameState.IN_PROGRESS:
                 from cogs.game import manage_answer_reactions
                 import time

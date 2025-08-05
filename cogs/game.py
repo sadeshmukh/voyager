@@ -28,6 +28,8 @@ try:
         """Return list of emoji characters whose name contains a given letter."""
         letter = letter.lower()
         matches = []
+        if _emoji_lib is None:
+            return matches
         for char, data in _emoji_lib.EMOJI_DATA.items():
             # emoji names can be list or str depending on lib version
             name = data.get("en", data.get("name", "")).lower()
@@ -62,7 +64,7 @@ class GameControlView(nextcord.ui.View):
     @nextcord.ui.button(
         label="Start Game", style=nextcord.ButtonStyle.green, custom_id="gc_start"
     )
-    async def start_button(self, button: nextcord.ui.Button, interaction: Interaction):
+    async def start_button(self, _button: nextcord.ui.Button, interaction: Interaction):
         from cogs.events import get_server_state
 
         server_state = get_server_state(self.guild_id)
@@ -141,7 +143,9 @@ class GameControlView(nextcord.ui.View):
     @nextcord.ui.button(
         label="Invite Player", style=nextcord.ButtonStyle.blurple, custom_id="gc_invite"
     )
-    async def invite_button(self, button: nextcord.ui.Button, interaction: Interaction):
+    async def invite_button(
+        self, _button: nextcord.ui.Button, interaction: Interaction
+    ):
         from cogs.events import get_server_state
 
         server_state = get_server_state(self.guild_id)
@@ -258,7 +262,9 @@ class GameControlView(nextcord.ui.View):
     @nextcord.ui.button(
         label="Cancel Game", style=nextcord.ButtonStyle.red, custom_id="gc_cancel"
     )
-    async def cancel_button(self, button: nextcord.ui.Button, interaction: Interaction):
+    async def cancel_button(
+        self, _button: nextcord.ui.Button, interaction: Interaction
+    ):
         from cogs.events import get_server_state, release_game_channel
 
         server_state = get_server_state(self.guild_id)
@@ -715,6 +721,9 @@ class GameCog(commands.Cog):
                 return
 
         server_state.waiting_users.append(user_id)
+        server_state.pending_waitlist_interactions[user_id] = (
+            interaction  # later respond by editing
+        )
         logger.debug(
             f"Added user {user_id} to waitlist. New count: {len(server_state.waiting_users)}"
         )

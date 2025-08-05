@@ -72,6 +72,7 @@ async def process_waitlist():
                             f"User {player_id} not found in guild cache, trying Discord API..."
                         )
                         try:
+                            # fetch forcefuolly retrieves from API - we try to avoid this
                             user = await guild.fetch_member(player_id)
                             logger.info(
                                 f"Successfully fetched user {player_id} from Discord API"
@@ -101,6 +102,25 @@ async def process_waitlist():
 
             server_state.instances[game_channel.id] = instance
 
+            # update ephemeral messages for allocated players
+            for player_id in players:
+                if player_id in server_state.pending_waitlist_interactions:
+                    interaction = server_state.pending_waitlist_interactions[player_id]
+                    try:
+                        await interaction.response.edit_message(
+                            content=f"You've been assigned to {game_channel.mention}!\n"
+                            f"Game: `{game_name}`\n"
+                            f"Check the channel to start playing!"
+                        )
+                        logger.info(
+                            f"Updated waitlist message for user {player_id} with channel {game_channel.name}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to edit waitlist message for user {player_id}: {e}"
+                        )
+                    del server_state.pending_waitlist_interactions[player_id]
+
             welcome_embed = nextcord.Embed(
                 title=f"Welcome to {game_name}!",
                 description="A player has been allocated to this game instance. Use the buttons below to invite more players and start when ready!",
@@ -121,9 +141,9 @@ async def process_waitlist():
 
             view = GameControlView(guild_id, game_channel.id)
             await game_channel.send(
-                "**Game Instance Created!**\n"
+                "# Game Instance Created!\n"
                 "• **Start Game** - Begin the game (requires 2+ players)\n"
-                "• **Invite Player** - Add more players to this game\n"
+                "• **Invite Player** - Add more players to this game - you can also @mention them here\n"
                 "• **Cancel Game** - Delete this game instance",
                 view=view,
             )
