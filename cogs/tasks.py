@@ -107,7 +107,7 @@ async def process_waitlist():
                 if player_id in server_state.pending_waitlist_interactions:
                     interaction = server_state.pending_waitlist_interactions[player_id]
                     try:
-                        await interaction.response.edit_message(
+                        await interaction.edit_original_message(
                             content=f"You've been assigned to {game_channel.mention}!\n"
                             f"Game: `{game_name}`\n"
                             f"Check the channel to start playing!"
@@ -123,7 +123,7 @@ async def process_waitlist():
 
             welcome_embed = nextcord.Embed(
                 title=f"Welcome to {game_name}!",
-                description="A player has been allocated to this game instance. Use the buttons below to invite more players and start when ready!",
+                description="Ready to play! Invite more people or start the game.",
                 color=nextcord.Color.blue(),
             )
             welcome_embed.add_field(

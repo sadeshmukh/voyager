@@ -110,8 +110,12 @@ class GameControlView(nextcord.ui.View):
                     f"Failed to assign role to user {interaction.user.id}: {e}"
                 )
 
+        await interaction.response.defer()
+
         config = create_game_config(len(instance.players))
         instance.start_game(config)
+
+        # send host message first
         await send_host_message(self.channel_id, "intro", interaction.client)
 
         embed = nextcord.Embed(
@@ -120,7 +124,7 @@ class GameControlView(nextcord.ui.View):
             color=nextcord.Color.green(),
         )
         embed.add_field(name="Players", value=str(len(instance.players)), inline=True)
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
         async def start_round():
             await asyncio.sleep(5)
@@ -344,16 +348,19 @@ def generate_challenge(game_type: GameType) -> Challenge:
 
     elif game_type == GameType.SPEED_CHALLENGE:
         speed_prompts = [
-            "Type the word 'SPEED' as fast as you can!",
-            "First to type 'SECOND' wins!",
-            "Race to type 'DASH'!",
-            "Be the first to type 'ZOOM'!",
+            "Type: SPEED",
+            "Type: SECOND",
+            "Type: DASH",
+            "Type: ZOOM",
             "Type 'I LOSE' to win this round!",
-            "Type 'SAHIL THE GOAT' as fast as you can!",
+            "Type: SAHIL THE GOAT",
         ]
 
         prompt = random.choice(speed_prompts)
-        target_word = prompt.split("'")[1]  # extract the word inside quotes
+        if "'" in prompt:  # handle "Type 'I LOSE' to win this round!"
+            target_word = prompt.split("'")[1]
+        else:  # handle "Type: WORD" format
+            target_word = prompt.split(": ")[1]
 
         return Challenge(
             challenge_type=game_type,
@@ -469,7 +476,8 @@ def generate_challenge(game_type: GameType) -> Challenge:
 
 
 async def send_host_message(channel_id: int, dialogue_key: str, bot=None):
-    if bot is None:
+    """Send a host message with random dialogue option"""
+    if not bot:
         return
 
     channel = bot.get_channel(channel_id)
@@ -477,11 +485,13 @@ async def send_host_message(channel_id: int, dialogue_key: str, bot=None):
         return
 
     messages = host_dialogue.get(dialogue_key, [])
-    timing = dialogue_timing.get(dialogue_key, dialogue_timing["default_wait"])
+    if not messages:
+        return
 
-    for message in messages:
-        await channel.send(message)
-        await asyncio.sleep(timing)
+    message = random.choice(messages)
+    timing = dialogue_timing.get(dialogue_key, dialogue_timing["default_wait"])
+    await channel.send(message)
+    await asyncio.sleep(timing)
 
 
 def create_game_config(player_count: int) -> GameConfig:

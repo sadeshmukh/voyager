@@ -143,20 +143,34 @@ async def discover_existing_game_channels(
 async def purge_game_channel(channel: nextcord.TextChannel) -> bool:
     """Purge all messages from a game channel to reset it"""
     try:
-        # BULK DELETE
+        # check if channel has any messages first
+        message_count = 0
         try:
-            await channel.purge(bulk=True)
-            logger.debug(f"Bulk deleted messages in {channel.name}")
+            # get just one message to check if channel has content
+            async for _ in channel.history(limit=1):
+                message_count = 1
+                break
+        # this caused bot hang initially :(
         except Exception as e:
-            logger.warning(
-                f"Bulk delete failed in {channel.name}, falling back to individual: {e}"
-            )
-            # fallback (please not necessary)
-            async for message in channel.history(limit=None):
-                try:
-                    await message.delete()
-                except Exception as e:
-                    logger.debug(f"Failed to delete message in {channel.name}: {e}")
+            logger.debug(f"Failed to check messages in {channel.name}: {e}")
+
+        if message_count == 0:
+            logger.debug(f"Channel {channel.name} is already empty, skipping purge")
+        else:
+            # BULK DELETE
+            try:
+                await channel.purge(bulk=True)
+                logger.debug(f"Bulk deleted messages in {channel.name}")
+            except Exception as e:
+                logger.warning(
+                    f"Bulk delete failed in {channel.name}, falling back to individual: {e}"
+                )
+                # fallback (please not necessary)
+                async for message in channel.history(limit=None):
+                    try:
+                        await message.delete()
+                    except Exception as e:
+                        logger.debug(f"Failed to delete message in {channel.name}: {e}")
 
         # ATOMIC PERMISSION RESET TO PREVENT FLASH
         # probably should explain for future me ^^ so if you update otherwise, it causes a "flash" of the channel
@@ -340,10 +354,9 @@ async def assign_player_to_game_role(
 
         user = guild.get_member(user_id)
         if not user:
-            logger.error(f"User {user_id} not found in guild {guild.name}")
-            logger.error(f"Guild member count: {guild.member_count}")
-            logger.error(f"Guild ID: {guild.id}")
-
+            logger.debug(
+                f"User {user_id} not found in guild cache, trying Discord API..."
+            )
             try:
                 user = await guild.fetch_member(user_id)
                 logger.info(f"Successfully fetched user {user_id} from Discord API")
@@ -503,9 +516,16 @@ async def initialize_app(bot):
                 for channel in existing_channels:
                     purge_tasks.append(purge_game_channel(channel))
 
-                purge_results = await asyncio.gather(
-                    *purge_tasks, return_exceptions=True
-                )
+                try:
+                    purge_results = await asyncio.wait_for(
+                        asyncio.gather(*purge_tasks, return_exceptions=True),
+                        timeout=30.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        f"Purge operations timed out for {guild.name}, skipping channel purging"
+                    )
+                    purge_results = [Exception("Timeout") for _ in purge_tasks]
 
                 for i, result in enumerate(purge_results):
                     if isinstance(result, Exception):
@@ -696,9 +716,16 @@ class EventsCog(commands.Cog):
                 for channel in existing_channels:
                     purge_tasks.append(purge_game_channel(channel))
 
-                purge_results = await asyncio.gather(
-                    *purge_tasks, return_exceptions=True
-                )
+                try:
+                    purge_results = await asyncio.wait_for(
+                        asyncio.gather(*purge_tasks, return_exceptions=True),
+                        timeout=30.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(
+                        f"Purge operations timed out for {guild.name}, skipping channel purging"
+                    )
+                    purge_results = [Exception("Timeout") for _ in purge_tasks]
 
                 for i, result in enumerate(purge_results):
                     if isinstance(result, Exception):
@@ -745,7 +772,7 @@ class EventsCog(commands.Cog):
                 lobby_channel = await find_or_create_lobby(guild)
 
                 await lobby_channel.send(
-                    f"Thanks for adding Voyager! Setup required.\n"
+                    f"Voyager added! Need to set up some channels first.\n"
                     f"Status: ⚠️ Manual setup required\n"
                     f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
                     f"Setup:\n"

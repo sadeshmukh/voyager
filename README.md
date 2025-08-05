@@ -1,19 +1,21 @@
 # Voyager
 
-This initially started as a Slack bot, but has since been ported to Discord - Slack proved to be too restrictive and hard to work with.
+A dynamic party game bot for Discord! 
 
 ## Too short, didn't read?
 
-Voyager creates dynamic party game instances in Discord! Players compete in various mini-games like quick math, trivia, speed challenges, and word games. Failed players face elimination rounds with different challenges. The system is designed to be extensible - adding new game types is easy!
+Voyager creates dynamic party game instances in Discord! Players compete in various mini-games like quick math, trivia, speed challenges, and word games. Failed players face elimination rounds with different challenges. It's very low friction - just /waitlist, and you're in!
 
 ## Game Types
 
 - **Quick Math**: Fast arithmetic challenges
 - **Trivia**: Knowledge-based questions  
 - **Speed Challenge**: First to respond wins
-- **Word Game**: Letter counting and word puzzles
-- **Collaborative**: (not implemented yet)
-- **Memory Game**: Coming soon!
+- **Text Modification**: Word puzzles and transformations
+- **Memory Game**: Remember sequences and patterns
+- **Emoji Challenge**: Find emojis containing specific letters
+- **Riddles**: Brain teasers and logic puzzles
+- **Collaborative**: Team-based challenges
 
 ## How It Works
 
@@ -21,18 +23,105 @@ Voyager creates dynamic party game instances in Discord! Players compete in vari
 ```
 GAME CHOSEN: Quick Math!
 What's 47 + 83?
-Time limit: 10 seconds
+Time limit: 8 seconds
 
 [Players submit answers...]
 
 Results:
-Correct: @a1 @b2  
-not: @c3 @d4
+✅ Correct: @player1 @player2  
+❌ Incorrect/No Answer: @player3 @player4
 
-scores! stuff! will be done in the future
+🏆 Live Leaderboard:
+@player1: **15** pts
+@player2: **12** pts
 ```
 
-## Setup
+## Discord Setup
+
+1. Create a Discord application at https://discord.com/developers/applications
+2. Create a bot for your application and get the bot token
+3. Enable necessary bot permissions:
+   - Send Messages
+   - Use Slash Commands
+   - Manage Channels
+   - Manage Roles
+   - Read Message History
+4. Enable the MEMBERS and MESSAGE_CONTENT intents in the Discord Developer Portal
+5. Set up environment variables in `.env`:
+
+```env
+DISCORD_BOT_TOKEN=your-discord-bot-token
+ADMIN_ID=your-discord-user-id
+LOBBY_CHANNEL_ID=your-lobby-channel-id
+```
+
+6. Install dependencies:
+
+```bash
+uv pip install -r pyproject.toml
+```
+
+7. Invite the bot to your server with appropriate permissions
+
+## Usage
+
+Run the bot:
+
+```bash
+uv run discord.py
+```
+
+### Commands
+
+**Lobby Commands:**
+- `/waitlist` - Join the queue for a game
+- `/state` - Check game/queue status
+
+**Game Instance Commands:**
+- `/start` - Start a game in an instance
+- `/next-round` - Start next main round (random game type)
+- `/state` - Check detailed game status
+
+### Game Flow
+
+1. Players join the waitlist in the lobby channel
+2. They get assigned to a game channel when enough players are ready
+3. Rounds... score... points...
+4. get more points!
+
+
+## Adding New Game Types
+
+The system is designed to be extensible! To add a new game type:
+
+1. Add to `GameType` enum in `instance.py`
+2. Add case in `generate_challenge()` function in `cogs/game.py`
+3. Optionally customize evaluation logic in `evaluate_current_challenge()`
+
+Example:
+```python
+class GameType(Enum):
+    # ... existing types ...
+    RIDDLE = "riddle"
+
+# In generate_challenge():
+elif game_type == GameType.RIDDLE:
+    riddle, answer = get_riddle()
+    return Challenge(
+        challenge_type=game_type,
+        question=riddle,
+        correct_answer=[answer],
+        time_limit=30
+    )
+```
+
+
+---
+
+## ARCHIVE: Slack Support
+
+
+### Original Slack Setup
 
 1. Create a Slack app at https://api.slack.com/apps with appropriate permissions
 2. Enable Socket Mode and install the app - make sure to add commands through the app settings
@@ -47,21 +136,7 @@ ADMIN_ID=U0123456789
 LOBBY_CHANNEL_ID=C0123456789
 ```
 
-5. Install dependencies:
-
-```bash
-uv pip install -r pyproject.toml
-```
-
-## Usage
-
-Run the bot:
-
-```bash
-uv run discord.py
-```
-
-### Commands
+### Slack Commands
 
 **Lobby Commands:**
 - `/waitlist` - Join the queue for a game
@@ -87,43 +162,4 @@ uv run discord.py
 - `word_game` - Word puzzles
 - `collaborative` - Team challenges
 
-## Adding New Game Types
-
-The system is designed to be extensible! To add a new game type:
-
-1. Add to `GameType` enum in `instance.py`
-2. Add case in `_generate_challenge()` method
-3. Optionally customize evaluation logic in `evaluate_current_challenge()`
-
-Example:
-```python
-class GameType(Enum):
-    # ... existing types ...
-    RIDDLE = "riddle"
-
-# In _generate_challenge():
-elif game_type == GameType.RIDDLE:
-    riddles = [
-        ("I have keys but no locks. What am I?", ["piano", "keyboard"]),
-        # ... more riddles
-    ]
-    riddle, answers = random.choice(riddles)
-    return Challenge(
-        challenge_type=game_type,
-        question=riddle,
-        correct_answer=answers,
-        time_limit=30
-    )
-```
-
-## Development
-
-Check out the [Slack Bolt Python docs](https://slack.dev/bolt-python/concepts) for framework details.
-
-### Architecture
-
-- **`instance.py`**: Core game logic, extensible challenge system
-    - ^^ independent of slack logic ^^
-- **`discord.py`**: Discord bot commands and event handling  
-- **Game Flow**: INTRO → MAIN_ROUND → ELIMINATION → OUTRO
-- **Player States**: ACTIVE → AT_RISK → ELIMINATED/WINNER
+For development reference, check out the [Slack Bolt Python docs](https://slack.dev/bolt-python/concepts).

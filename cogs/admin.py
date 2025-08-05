@@ -317,7 +317,7 @@ class AdminCog(commands.Cog):
             for role_info in failed_roles:
                 response += f"• {role_info}\n"
 
-        await interaction.followup.send(response)
+        await interaction.followup.send(response, ephemeral=True)
 
 
 def setup(bot):

@@ -85,28 +85,29 @@ DEFAULT_TIME_LIMIT = 30
 
 RIDDLES_CSV_PATH = "riddles.csv"
 
-host_dialogue = {  # TODO: actually fix dialogue (thank chatgpt for filler)
+host_dialogue = {
     "intro": [
-        "Welcome!",
-        "I'm your host, and I'm excited to see how you all perform!",
-        "Let's see who can score the most points!",
+        "Alright, let's do this!",
+        "Time to see what you've got",
+        "Who's gonna win this one?",
     ],
     "main_round": [
-        "Time for another round of challenges!",
-        "Don't worry, everyone learns from mistakes!",
-        "Let's see those answers!",
+        "Next round!",
+        "Here we go again",
+        "Let's see those answers",
     ],
     "final_results": [
-        "Time to see who performed best in this challenge!",
-        "Let's see those final scores!",
-        "May the highest score win!",
+        "Final scores coming up...",
+        "And the winner is...",
+        "Here's how everyone did:",
     ],
     "outro": [
-        "That's a wrap on tonight's challenge!",
-        "Thanks for playing, and great job everyone!",
-        "See you next time!",
+        "Good game everyone!",
+        "GG!",
+        "That was fun!",
     ],
 }
+
 
 dialogue_timing = {
     "default_wait": 2.0,
