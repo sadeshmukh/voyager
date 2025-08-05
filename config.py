@@ -2,11 +2,11 @@ import os
 
 
 two_player_config = {
-    "main_rounds": 3,
+    "main_rounds": 15,
 }
 
 multi_player_config = {
-    "main_rounds": 5,
+    "main_rounds": 20,
 }
 
 MAX_CHANNELS = 10
@@ -18,10 +18,46 @@ RESPONSE_TIME_THRESHOLDS = {
 SERVER_DEFAULTS = {
     "max_channels": 10,
     "initialized": False,
+    "hoist_roles": True,
+    "rounds_per_game": 15,
+    "role_color": "blue",
+}
+
+SERVER_CONFIG_OPTIONS = {
+    "hoist_roles": {
+        "type": "bool",
+        "description": "Whether to hoist game roles in the member list",
+        "default": True,
+        "choices": ["true", "false"] if "choices" in globals() else None,
+    },
+    "rounds_per_game": {
+        "type": "int",
+        "description": "Number of rounds per game (max 25)",
+        "default": 15,
+        "min": 5,
+        "max": 25,
+    },
+    "role_color": {
+        "type": "str",
+        "description": "Color for game roles",
+        "default": "blue",
+        "choices": [
+            "blue",
+            "green",
+            "red",
+            "yellow",
+            "purple",
+            "orange",
+            "pink",
+            "teal",
+        ],
+    },
 }
 
 SCORING = {
     "correct_answer_points": 10,
+    "speed_bonus_points": 5,
+    "first_answer_bonus": 3,
 }
 
 AI_ENDPOINT = "https://ai.hackclub.com/chat/completions"
@@ -93,7 +129,7 @@ host_dialogue = {
     ],
     "main_round": [
         "Next round!",
-        "Here we go again",
+        "Here we go again...",
         "Let's see those answers",
     ],
     "final_results": [
@@ -120,3 +156,105 @@ dialogue_timing = {
 }
 
 DEBUG_MODE = os.environ.get("DEBUG", "false").lower() == "true"
+
+GAME_NAME_ADJECTIVES = [
+    "Epic",
+    "Mysterious",
+    "Golden",
+    "Cosmic",
+    "Legendary",
+    "Hidden",
+    "Ancient",
+    "Magical",
+    "Swift",
+    "Brave",
+    "Clever",
+    "Wild",
+    "Silent",
+    "Bright",
+    "Dark",
+    "Fierce",
+    "Gentle",
+    "Wise",
+    "Quick",
+    "Strong",
+    "Calm",
+    "Bold",
+    "Shiny",
+    "Rare",
+]
+
+GAME_NAME_NOUNS = [
+    "Quest",
+    "Adventure",
+    "Journey",
+    "Challenge",
+    "Mission",
+    "Voyage",
+    "Expedition",
+    "Trial",
+    "Test",
+    "Battle",
+    "Race",
+    "Hunt",
+    "Discovery",
+    "Exploration",
+    "Puzzle",
+    "Mystery",
+    "Treasure",
+    "Legend",
+    "Tale",
+    "Story",
+    "Saga",
+    "Chronicle",
+    "Odyssey",
+]
+
+ROLE_NAME_FRUITS = [
+    "Apple",
+    "Banana",
+    "Orange",
+    "Grape",
+    "Strawberry",
+    "Peach",
+    "Mango",
+    "Pineapple",
+    "Kiwi",
+    "Blueberry",
+    "Cherry",
+    "Pear",
+    "Coconut",
+    "Lemon",
+    "Watermelon",
+]
+
+SPEED_CHALLENGE_PROMPTS = [
+    "Type: SPEED",
+    "Type: SECOND",
+    "Type: DASH",
+    "Type: ZOOM",
+    "Type 'I LOSE' to win this round!",
+    "Type: SAHIL THE GOAT",
+]
+
+TEXT_MODIFICATION_WORDS = [
+    "hello",
+    "voyager",
+    "discord",
+    "gaming",
+    "python",
+    "challenge",
+    "quizzer",
+]
+
+TEXT_MODIFICATION_TYPES = [
+    "reverse",
+    "alternating_case",
+]
+
+MATH_OPERATIONS = [  # yes this is overcomplicated. no I do not care
+    ("+", "add"),
+    ("-", "subtract"),
+    ("×", "multiply"),
+    ("÷", "divide"),
+]

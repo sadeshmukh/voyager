@@ -95,7 +95,7 @@ class GameConfig:
     """Configuration for different player counts and game types"""
 
     player_count: int
-    main_rounds: int = 5
+    main_rounds: int = 20
     available_game_types: List[GameType] = None
 
     def __post_init__(self):
@@ -256,16 +256,24 @@ class Instance:
             player.current_answer = answer
             player.previous_message_ts = message_ts
 
-            # record response time for speed challenges
-            if (
-                self.current_challenge
-                and self.current_challenge.metadata.get("speed_based")
-                and self.round_start_time
-            ):
+            # record response time for all challenges (for speed bonuses)
+            if self.current_challenge and self.round_start_time:
                 player.response_time = time.time() - self.round_start_time
 
             return previous_ts
         return None
+
+    def all_players_answered(self) -> bool:
+        """Check if all active players have submitted an answer"""
+        active_players = [
+            user_id
+            for user_id, player in self.players.items()
+            if player.state == PlayerState.ACTIVE
+        ]
+        return all(
+            self.players[user_id].current_answer is not None
+            for user_id in active_players
+        )
 
     def evaluate_current_challenge(self) -> Dict[str, Any]:
         """Evaluate the current challenge and return results"""
@@ -347,9 +355,26 @@ class Instance:
 
     def _apply_challenge_results(self, results: Dict[str, Any]) -> None:
         """Apply challenge results to player states"""
+        correct_players_with_time = []
         for user_id in results["correct_players"]:
             if user_id in self.players:
-                self.players[user_id].score += SCORING["correct_answer_points"]
+                player = self.players[user_id]
+                if player.response_time is not None:
+                    correct_players_with_time.append((user_id, player.response_time))
+
+        correct_players_with_time.sort(key=lambda x: x[1])
+
+        for i, (user_id, response_time) in enumerate(correct_players_with_time):
+            player = self.players[user_id]
+            base_points = SCORING["correct_answer_points"]
+
+            if i == 0:
+                player.score += base_points + SCORING["first_answer_bonus"]
+            else:
+                player.score += base_points
+
+            if response_time <= 5.0:
+                player.score += SCORING["speed_bonus_points"]
 
     def check_leader_change(self) -> Optional[str]:
         """Check if there's a new leader and return their user_id"""

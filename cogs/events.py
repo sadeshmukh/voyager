@@ -39,6 +39,7 @@ class ServerState:
         "initialized"
     ]  # whether the server has been automatically initialized
     max_channels: int = SERVER_DEFAULTS["max_channels"]
+    config: Dict[str, any] = None  # server-specific
 
     def __post_init__(self):
         if self.waiting_users is None:
@@ -57,6 +58,12 @@ class ServerState:
             self.game_roles = {}
         if self.pending_waitlist_interactions is None:
             self.pending_waitlist_interactions = {}
+        if self.config is None:
+            self.config = {
+                "hoist_roles": SERVER_DEFAULTS["hoist_roles"],
+                "rounds_per_game": SERVER_DEFAULTS["rounds_per_game"],
+                "role_color": SERVER_DEFAULTS["role_color"],
+            }
 
 
 SERVERS: Dict[int, ServerState] = {}  # guild_id: ServerState
@@ -292,33 +299,32 @@ async def create_game_role(
 
     try:
         import random
+        from config import ROLE_NAME_FRUITS
 
-        fruits = [
-            "Apple",
-            "Banana",
-            "Orange",
-            "Grape",
-            "Strawberry",
-            "Peach",
-            "Mango",
-            "Pineapple",
-            "Kiwi",
-            "Blueberry",
-            "Cherry",
-            "Pear",
-            "Coconut",
-            "Lemon",
-            "Watermelon",
-        ]
-
-        random_fruit = random.choice(fruits)
+        random_fruit = random.choice(ROLE_NAME_FRUITS)
         role_name = f"Voyaging {random_fruit}"
+
+        color_name = server_state.config.get("role_color", "blue")
+        color_map = {
+            "blue": nextcord.Color.blue(),
+            "green": nextcord.Color.green(),
+            "red": nextcord.Color.red(),
+            "yellow": nextcord.Color.yellow(),
+            "purple": nextcord.Color.purple(),
+            "orange": nextcord.Color.orange(),
+            "pink": nextcord.Color.pink(),
+            "teal": nextcord.Color.teal(),
+        }
+        role_color = color_map.get(color_name, nextcord.Color.blue())
+
+        hoist_roles = server_state.config.get("hoist_roles", True)
+
         role = await guild.create_role(
             name=role_name,
-            color=nextcord.Color.blue(),
+            color=role_color,
             reason=f"Auto-created role for game: {game_name}",
             mentionable=True,
-            hoist=True,
+            hoist=hoist_roles,
         )
 
         server_state.game_roles[channel_id] = role.id
@@ -888,7 +894,21 @@ class EventsCog(commands.Cog):
                 player = instance.players.get(str(user_id))
                 if player and instance.round_start_time:
                     response_time = time.time() - instance.round_start_time
-                    await manage_answer_reactions(message, previous_ts, response_time)
+                    if response_time <= instance.current_challenge.time_limit:
+                        await manage_answer_reactions(
+                            message, previous_ts, response_time
+                        )
+
+                    if instance.all_players_answered():
+                        if channel_id in server_state.round_timers:
+                            server_state.round_timers[channel_id].cancel()
+                            del server_state.round_timers[channel_id]
+
+                        from cogs.game import auto_evaluate_round
+
+                        await auto_evaluate_round(
+                            message.guild.id, channel_id, message.guild.me._state.client
+                        )
 
 
 def setup(bot):

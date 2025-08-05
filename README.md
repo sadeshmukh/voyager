@@ -53,6 +53,11 @@ Results:
 DISCORD_BOT_TOKEN=your-discord-bot-token
 ADMIN_ID=your-discord-user-id
 LOBBY_CHANNEL_ID=your-lobby-channel-id
+
+# AI Configuration (optional)
+AI_PROVIDER=hackclub  # or "ollama"
+OLLAMA_ENDPOINT=http://localhost:11434  # only needed if using ollama
+OLLAMA_MODEL=llama2  # only needed if using ollama
 ```
 
 6. Install dependencies:
@@ -62,6 +67,24 @@ uv pip install -r pyproject.toml
 ```
 
 7. Invite the bot to your server with appropriate permissions
+
+## AI Configuration
+
+The bot uses AI to verify answers for certain game types. You can configure which AI provider to use. Unfortunately, Hack Club doesn't offer a non-thinking variant, leading to inconsistent answers and token overuse.
+
+For that reason, I currently recommend using Ollama.
+
+### Ollama (Local)
+To use Ollama for answer verification:
+
+1. Install and run Ollama: https://ollama.com/
+2. Pull a model: `ollama pull gemma2:2b`
+3. Set environment variables:
+   ```env
+   AI_PROVIDER=ollama
+   OLLAMA_ENDPOINT=http://localhost:11434
+   OLLAMA_MODEL=gemma2:2b
+   ```
 
 ## Usage
 
@@ -86,8 +109,10 @@ uv run discord.py
 
 1. Players join the waitlist in the lobby channel
 2. They get assigned to a game channel when enough players are ready
-3. Rounds... score... points...
-4. get more points!
+3. Games run for 15-20 rounds 
+4. Players compete in various mini-games with speed bonuses
+5. Early round ending when all players answer
+6. Final scores and winner announcement
 
 
 ## Adding New Game Types

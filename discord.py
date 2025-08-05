@@ -35,7 +35,6 @@ intents.message_content = True
 intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Event to signal shutdown
 shutdown_event = asyncio.Event()
 
 
@@ -71,6 +70,7 @@ def load_cogs():
         "cogs.events",
         "cogs.game",
         "cogs.admin",
+        "cogs.server",
         "cogs.debug",
         "cogs.tasks",
     ]

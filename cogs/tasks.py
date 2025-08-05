@@ -1,7 +1,14 @@
 import time
 import logging
+import random
 from nextcord.ext import commands, tasks
 import nextcord
+from config import GAME_NAME_ADJECTIVES, GAME_NAME_NOUNS
+
+
+def generate_game_name() -> str:
+    return f"{random.choice(GAME_NAME_ADJECTIVES)} {random.choice(GAME_NAME_NOUNS)}"
+
 
 logger = logging.getLogger("voyager_discord")
 
@@ -48,7 +55,7 @@ async def process_waitlist():
                     f"Server {guild.name} not initialized, skipping waitlist processing"
                 )
                 continue
-            game_name = f"game-{int(time.time())}"
+            game_name = generate_game_name()
 
             game_channel = await allocate_game_channel(guild, game_name)
             if not game_channel:
@@ -137,14 +144,11 @@ async def process_waitlist():
                 inline=False,
             )
             player_mentions = " ".join([f"<@{p}>" for p in players])
-            await game_channel.send(f"🎮 {player_mentions}", embed=welcome_embed)
+            await game_channel.send(f"{player_mentions}", embed=welcome_embed)
 
             view = GameControlView(guild_id, game_channel.id)
             await game_channel.send(
-                "# Game Instance Created!\n"
-                "• **Start Game** - Begin the game (requires 2+ players)\n"
-                "• **Invite Player** - Add more players to this game - you can also @mention them here\n"
-                "• **Cancel Game** - Delete this game instance",
+                # "Ready!\n",
                 view=view,
             )
 

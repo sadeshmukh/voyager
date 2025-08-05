@@ -41,13 +41,8 @@ except Exception:  # pragma: no cover – fallback if emoji lib missing
     _emoji_lib = None
 
     def _get_emojis_matching(letter: str) -> list[str]:
-        fallback_map = {
-            "a": ["🍎", "🐜", "🅰️"],
-            "b": ["🐝", "🍌", "🅱️"],
-            "c": ["🐱", "🌜", "🌶️"],
-            "d": ["🐶", "🎯", "💃"],
-        }
-        return fallback_map.get(letter.lower(), ["😀"])
+        """Return empty list if emoji library is not available"""
+        return []
 
 
 logger = logging.getLogger("voyager_discord")
@@ -112,7 +107,7 @@ class GameControlView(nextcord.ui.View):
 
         await interaction.response.defer()
 
-        config = create_game_config(len(instance.players))
+        config = create_game_config(len(instance.players), self.guild_id)
         instance.start_game(config)
 
         # send host message first
@@ -318,14 +313,17 @@ def create_round_embed(instance: Instance, challenge: Challenge) -> nextcord.Emb
 
 def generate_challenge(game_type: GameType) -> Challenge:
     if game_type == GameType.QUICK_MATH:
-        op_symbol, op_func = random.choice(
-            [
-                ("+", lambda x, y: x + y),
-                ("-", lambda x, y: x - y),
-                ("×", lambda x, y: x * y),
-                ("÷", lambda x, y: x // y),
-            ]
-        )
+        from config import MATH_OPERATIONS
+
+        op_symbol, op_name = random.choice(MATH_OPERATIONS)
+
+        op_funcs = {
+            "add": lambda x, y: x + y,
+            "subtract": lambda x, y: x - y,
+            "multiply": lambda x, y: x * y,
+            "divide": lambda x, y: x // y,
+        }
+        op_func = op_funcs[op_name]
 
         if op_symbol == "÷":
             b = random.randint(2, 12)
@@ -347,16 +345,9 @@ def generate_challenge(game_type: GameType) -> Challenge:
         )
 
     elif game_type == GameType.SPEED_CHALLENGE:
-        speed_prompts = [
-            "Type: SPEED",
-            "Type: SECOND",
-            "Type: DASH",
-            "Type: ZOOM",
-            "Type 'I LOSE' to win this round!",
-            "Type: SAHIL THE GOAT",
-        ]
+        from config import SPEED_CHALLENGE_PROMPTS
 
-        prompt = random.choice(speed_prompts)
+        prompt = random.choice(SPEED_CHALLENGE_PROMPTS)
         if "'" in prompt:  # handle "Type 'I LOSE' to win this round!"
             target_word = prompt.split("'")[1]
         else:  # handle "Type: WORD" format
@@ -371,18 +362,13 @@ def generate_challenge(game_type: GameType) -> Challenge:
         )
 
     elif game_type == GameType.TEXT_MODIFICATION:
-        words = [
-            "hello",
-            "voyager",
-            "discord",
-            "gaming",
-            "python",
-            "challenge",
-            "quizzer",
-        ]
-        word = random.choice(words)
+        from config import TEXT_MODIFICATION_WORDS
 
-        mod_type = random.choice(["reverse", "alternating_case"])
+        word = random.choice(TEXT_MODIFICATION_WORDS)
+
+        from config import TEXT_MODIFICATION_TYPES
+
+        mod_type = random.choice(TEXT_MODIFICATION_TYPES)
 
         if mod_type == "reverse":
             question = f"Type '{word}' backwards"
@@ -422,21 +408,45 @@ def generate_challenge(game_type: GameType) -> Challenge:
     elif game_type == GameType.EMOJI_CHALLENGE:
         letter = random.choice(string.ascii_lowercase)
         emoji_choices = _get_emojis_matching(letter)
-        # ensure we have at least a few emojis; fallback if not
-        if len(emoji_choices) < 3:
-            emoji_choices = emoji_choices + ["😀", "😎", "😉"]
 
-        selected = random.sample(emoji_choices, k=min(5, len(emoji_choices)))
+        if len(emoji_choices) < 5:
+            return generate_challenge(GameType.TRIVIA)
+
+        target_emojis = random.sample(emoji_choices, k=5)
+
+        # explicitly doesn't contain
+        distractor_emojis = []
+        if _emoji_lib is not None:
+            for char, data in _emoji_lib.EMOJI_DATA.items():
+                name = data.get("en", data.get("name", "")).lower()
+                if letter not in name and char not in target_emojis:
+                    distractor_emojis.append(char)
+
+        distractors = random.sample(
+            distractor_emojis, k=min(20, len(distractor_emojis))
+        )
+
+        grid_emojis = target_emojis + distractors
+        random.shuffle(grid_emojis)
+
+        # arrange as grid
+        grid_rows = []
+        for i in range(0, 25, 5):
+            row = " ".join(grid_emojis[i : i + 5])
+            grid_rows.append(row)
+        grid_display = "\n".join(grid_rows)
+
         question = (
-            f"Type ALL of the following emojis in ANY order: {' '.join(selected)}"
-            f"\n(They each contain the letter '{letter}' in their name)"
+            f"**Find the 5 emojis that start with the letter '{letter.upper()}'!**\n\n"
+            f"{grid_display}\n\n"
+            f"Type the 5 emojis in any order (separated by spaces)\n\n"
         )
 
         return Challenge(
             challenge_type=game_type,
             question=question,
-            correct_answer=selected,
-            time_limit=25,
+            correct_answer=target_emojis,
+            time_limit=35,
             metadata={"emoji_challenge": True, "letter": letter},
         )
 
@@ -494,11 +504,18 @@ async def send_host_message(channel_id: int, dialogue_key: str, bot=None):
     await asyncio.sleep(timing)
 
 
-def create_game_config(player_count: int) -> GameConfig:
-    if player_count <= 2:
-        config = GameConfig(player_count, **two_player_config)
+def create_game_config(player_count: int, guild_id: int = None) -> GameConfig:
+    from cogs.events import get_server_state
+
+    if guild_id:
+        server_state = get_server_state(guild_id)
+        rounds_per_game = server_state.config.get("rounds_per_game", 15)
+        config = GameConfig(player_count, main_rounds=rounds_per_game)
     else:
-        config = GameConfig(player_count, **multi_player_config)
+        if player_count <= 2:
+            config = GameConfig(player_count, **two_player_config)
+        else:
+            config = GameConfig(player_count, **multi_player_config)
     return config
 
 
@@ -575,11 +592,19 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
 
     await channel.send(embed=embed)
 
+    if instance.all_players_answered():
+        early_end_embed = nextcord.Embed(
+            title="⏰ Round Ended Early!",
+            description="All players have answered!",
+            color=nextcord.Color.green(),
+        )
+        await channel.send(embed=early_end_embed)
+
     active_players = sum(
         1 for p in instance.players.values() if p.state == PlayerState.ACTIVE
     )
 
-    if active_players <= 1:
+    if active_players <= 1 or instance.current_round >= instance.config.main_rounds:
         await send_host_message(channel_id, "final_results", bot)
         final_results = instance.end_game()
 
@@ -936,7 +961,7 @@ class GameCog(commands.Cog):
                     f"Failed to assign role or send message for user {user_id}: {e}"
                 )
 
-        config = create_game_config(len(instance.players))
+        config = create_game_config(len(instance.players), guild.id)
         instance.start_game(config)
 
         await send_host_message(channel_id, "intro", self.bot)
