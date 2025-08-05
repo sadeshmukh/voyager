@@ -1,7 +1,6 @@
-import time
 import asyncio
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 
 import nextcord
 from nextcord.ext import commands
@@ -16,7 +15,7 @@ from config import (
     dialogue_timing,
     MAX_CHANNELS,
     RESPONSE_TIME_THRESHOLDS,
-    SERVER_DEFAULTS,
+    # SERVER_DEFAULTS,
     ERROR_RESPONSE,
 )
 import random
@@ -505,7 +504,7 @@ class GameCog(commands.Cog):
         from cogs.events import (
             get_server_state,
             find_or_create_lobby,
-            allocate_game_channel,
+            # allocate_game_channel,
         )
 
         guild = interaction.guild

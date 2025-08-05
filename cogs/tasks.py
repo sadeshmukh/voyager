@@ -80,7 +80,6 @@ async def process_waitlist():
                 value="⏳ Waiting for more players (minimum 2 required to start)",
                 inline=False,
             )
-            # must mention separately (embeds don't mention iirc?)
             player_mentions = " ".join([f"<@{p}>" for p in players])
             await game_channel.send(f"🎮 {player_mentions}", embed=welcome_embed)
 

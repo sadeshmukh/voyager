@@ -74,20 +74,12 @@ class AdminCog(commands.Cog):
             server_state.all_game_channels.append(channel.id)
             server_state.available_game_channels.append(channel.id)
 
-            embed = nextcord.Embed(
-                title="Game Channel Created",
-                description=f"Admin created channel: {name}",
-                color=nextcord.Color.gold(),
+            await interaction.response.send_message(
+                f"Game channel created: {name}\n"
+                f"Channel: <#{channel.id}>\n"
+                f"Status: Available for games\n"
+                f"Channels Total: {len(server_state.all_game_channels)}/{MAX_CHANNELS}"
             )
-            embed.add_field(name="Channel", value=f"<#{channel.id}>", inline=True)
-            embed.add_field(name="Status", value="Available for games", inline=True)
-            embed.add_field(
-                name="Channels Total",
-                value=f"{len(server_state.all_game_channels)}/{MAX_CHANNELS}",
-                inline=True,
-            )
-
-            await interaction.response.send_message(embed=embed)
 
         except Exception as e:
             logger.error(f"Failed to create game channel in {guild.name}: {e}")
@@ -137,15 +129,11 @@ class AdminCog(commands.Cog):
         instance = create_instance_with_dialogue(guild.id, game_channel.id, name)
         server_state.instances[game_channel.id] = instance
 
-        embed = nextcord.Embed(
-            title="Game Instance Created",
-            description=f"Admin created game: {name}",
-            color=nextcord.Color.gold(),
+        await interaction.response.send_message(
+            f"Game instance created: {name}\n"
+            f"Channel: <#{game_channel.id}>\n"
+            f"Status: Waiting for players"
         )
-        embed.add_field(name="Channel", value=f"<#{game_channel.id}>", inline=True)
-        embed.add_field(name="Status", value="Waiting for players", inline=True)
-
-        await interaction.response.send_message(embed=embed)
 
     @admin_group.subcommand(
         name="invite", description="Invite a user to the current game (Admin only)"
@@ -200,26 +188,17 @@ class AdminCog(commands.Cog):
         try:
             channel = guild.get_channel(channel_id)
             if channel:
-                welcome_embed = nextcord.Embed(
-                    title="Player Joined!",
-                    description=f"{user.mention} has been invited to the game!",
-                    color=nextcord.Color.green(),
+                await channel.send(
+                    f"{user.mention} has been invited to the game!\n"
+                    f"Total Players: {len(instance.players)}"
                 )
-                welcome_embed.add_field(
-                    name="Total Players", value=len(instance.players), inline=True
-                )
-                await channel.send(f"{user.mention}", embed=welcome_embed)
         except Exception as e:
             logger.error(f"Failed to send welcome message for user {user.id}: {e}")
 
-        embed = nextcord.Embed(
-            title="Player Invited",
-            description=f"{user.mention} has been invited to the game!",
-            color=nextcord.Color.green(),
+        await interaction.response.send_message(
+            f"{user.mention} has been invited to the game!\n"
+            f"Total Players: {len(instance.players)}"
         )
-        embed.add_field(name="Total Players", value=len(instance.players), inline=True)
-
-        await interaction.response.send_message(embed=embed)
 
     @admin_group.subcommand(
         name="purgelobby",
@@ -240,9 +219,9 @@ class AdminCog(commands.Cog):
             )
             return
 
-        from cogs.events import get_server_state, find_or_create_lobby
+        from cogs.events import find_or_create_lobby
 
-        server_state = get_server_state(guild.id)
+        # server_state = get_server_state(guild.id)
 
         try:
             lobby_channel = await find_or_create_lobby(guild)
@@ -270,14 +249,9 @@ class AdminCog(commands.Cog):
                     f"Admin purged {deleted_count} messages from lobby in {guild.name}"
                 )
 
-            embed = nextcord.Embed(
-                title="Lobby Purged",
-                description="All messages have been removed from the lobby channel.",
-                color=nextcord.Color.red(),
+            await interaction.followup.send(
+                f"Lobby purged successfully.\nChannel: <#{lobby_channel.id}>"
             )
-            embed.add_field(name="Channel", value=f"<#{lobby_channel.id}>", inline=True)
-
-            await interaction.followup.send(embed=embed)
 
         except Exception as e:
             logger.error(f"Failed to purge lobby in {guild.name}: {e}")

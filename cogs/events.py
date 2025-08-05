@@ -277,27 +277,17 @@ async def initialize_app(bot):
                 for channel in guild.text_channels:
                     if channel.permissions_for(bot_member).send_messages:
                         try:
-                            embed = nextcord.Embed(
-                                title="Voyaging",
-                                description="⚠️ I need some permissions to work properly",
-                                color=nextcord.Color.red(),
+                            await channel.send(
+                                f"⚠️ I need some permissions to work properly\n"
+                                f"Missing Permissions: {', '.join(missing_permissions)}\n"
+                                f"Required Permissions:\n"
+                                f"• Send Messages\n"
+                                f"• Read Messages\n"
+                                f"• Manage Channels\n"
+                                f"• Manage Messages\n"
+                                f"• Embed Links\n"
+                                f"Next Steps: Grant the missing permissions and restart the bot"
                             )
-                            embed.add_field(
-                                name="Missing Permissions",
-                                value=", ".join(missing_permissions),
-                                inline=False,
-                            )
-                            embed.add_field(
-                                name="Required Permissions",
-                                value="• Send Messages\n• Read Messages\n• Manage Channels\n• Manage Messages\n• Embed Links",
-                                inline=False,
-                            )
-                            embed.add_field(
-                                name="Next Steps",
-                                value="Grant the missing permissions and restart the bot",
-                                inline=False,
-                            )
-                            await channel.send(embed=embed)
                             logger.debug(f"Sent permission warning to {guild.name}")
                             break
                         except Exception as e:
@@ -373,29 +363,19 @@ async def initialize_app(bot):
                     value="• Use `/waitlist` to join games\n• Use `/state` to check status\n• Use `/admin create` to add more channels",
                     inline=False,
                 )
+                await lobby_channel.send(embed=embed)
             else:
                 lobby_channel = await find_or_create_lobby(guild)
 
-                embed = nextcord.Embed(
-                    title="Voyager Online",
-                    description="The party game bot is ready! Setup required.",
-                    color=nextcord.Color.orange(),
-                )
-                embed.add_field(
-                    name="Status", value="⚠️ Manual setup required", inline=True
-                )
-                embed.add_field(
-                    name="Missing",
-                    value="Lobby channel" if not lobby_exists else "Game channels",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Setup",
-                    value="• Use `/admin create` to create game channels\n• Server will auto-initialize when ready",
-                    inline=False,
+                await lobby_channel.send(
+                    f"Voyager is ready! Setup required.\n"
+                    f"Status: ⚠️ Manual setup required\n"
+                    f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
+                    f"Setup:\n"
+                    f"• Use `/admin create` to create game channels\n"
+                    f"• Server will auto-initialize when ready"
                 )
 
-            await lobby_channel.send(embed=embed)
             logger.debug(f"Processed server {guild.name}")
 
         except Exception as e:
@@ -465,27 +445,17 @@ class EventsCog(commands.Cog):
                 for channel in guild.text_channels:
                     if channel.permissions_for(bot_member).send_messages:
                         try:
-                            embed = nextcord.Embed(
-                                title="Not Voyaging Yet",
-                                description="⚠️ Bot is missing required permissions",
-                                color=nextcord.Color.red(),
+                            await channel.send(
+                                f"⚠️ Bot is missing required permissions\n"
+                                f"Missing Permissions: {', '.join(missing_permissions)}\n"
+                                f"Required Permissions:\n"
+                                f"• Send Messages\n"
+                                f"• Read Messages\n"
+                                f"• Manage Channels\n"
+                                f"• Manage Messages\n"
+                                f"• Embed Links\n"
+                                f"Next Steps: Grant the missing permissions and restart the bot"
                             )
-                            embed.add_field(
-                                name="Missing Permissions",
-                                value=", ".join(missing_permissions),
-                                inline=False,
-                            )
-                            embed.add_field(
-                                name="Required Permissions",
-                                value="• Send Messages\n• Read Messages\n• Manage Channels\n• Manage Messages\n• Embed Links",
-                                inline=False,
-                            )
-                            embed.add_field(
-                                name="Next Steps",
-                                value="Grant the missing permissions and restart the bot",
-                                inline=False,
-                            )
-                            await channel.send(embed=embed)
                             logger.debug(f"Sent permission warning to {guild.name}")
                             return
                         except Exception as e:
@@ -550,7 +520,6 @@ class EventsCog(commands.Cog):
                     value="Ready!",
                     inline=True,
                 )
-
                 embed.add_field(
                     name="Game Channels",
                     value=f"{len(existing_channels)}/{MAX_CHANNELS}",
@@ -566,29 +535,19 @@ class EventsCog(commands.Cog):
                     value="• Use `/waitlist` to join games\n• Use `/state` to check status\n• Use `/admin create` to add more channels",
                     inline=False,
                 )
+                await lobby_channel.send(embed=embed)
             else:
                 lobby_channel = await find_or_create_lobby(guild)
 
-                embed = nextcord.Embed(
-                    title="Voyager Bot Joined!",
-                    description="Thanks for adding Voyager! Setup required.",
-                    color=nextcord.Color.orange(),
-                )
-                embed.add_field(
-                    name="Status", value="⚠️ Manual setup required", inline=True
-                )
-                embed.add_field(
-                    name="Missing",
-                    value="Lobby channel" if not lobby_exists else "Game channels",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Setup",
-                    value="• Use `/admin create` to create game channels\n• Server will auto-initialize when ready",
-                    inline=False,
+                await lobby_channel.send(
+                    f"Thanks for adding Voyager! Setup required.\n"
+                    f"Status: ⚠️ Manual setup required\n"
+                    f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
+                    f"Setup:\n"
+                    f"• Use `/admin create` to create game channels\n"
+                    f"• Server will auto-initialize when ready"
                 )
 
-            await lobby_channel.send(embed=embed)
             logger.debug(f"Bot joined server {guild.name}")
 
         except Exception as e:
