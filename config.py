@@ -26,6 +26,33 @@ SCORING = {
 
 AI_ENDPOINT = "https://ai.hackclub.com/chat/completions"
 
+ERROR_RESPONSE = {
+    "server_only": "This command can only be used in a server!",
+    "admin_required": "You need administrator permissions to use this command!",
+    "max_channels_reached": f"Maximum number of game channels ({MAX_CHANNELS}) reached! Cannot create more channels.",
+    "no_available_channels": "No available game channels! Use `/admin create` to create more channels.",
+    "no_available_channels_guild": "No available game channels in {guild_name}. Use /admin create to create more.",
+    "game_not_found": "Game not found.",
+    "user_not_found": "User not found! ",
+    "no_game_running": "No game is currently running in this channel.",
+    "on_waitlist": "You're on the waitlist - an instance will be allocated soon!",
+    "game_already_started": "Game already started.",
+    "cannot_invite_started": "Cannot invite players - game has already started!",
+    "cannot_invite_bots": "Cannot invite bots to the game!",
+    "already_in_game": "{user_mention} is already in this game!",
+    "no_active_game": "No active game in this channel!",
+    "game_not_in_progress": "Game is not in progress!",
+    "games_cannot_start_lobby": "Games cannot be started in the lobby channel!",
+    "server_not_initialized": "Server not initialized! Server will auto-initialize when ready.",
+    "need_at_least_2_players": "Need at least 2 players to start the game! Use the Invite button to invite more players.",
+    "use_waitlist_in_lobby": "No game instance found in this channel! Use `/waitlist` in the lobby to join a game.",
+    "already_in_waitlist": "You're already in the waitlist! (Position #{position})",
+    "command_lobby_only": "This command can only be used in {lobby_mention}!",
+    "purging_lobby": "Purging lobby channel...",
+    "failed_create_channel": "Failed to create game channel! Bot may lack permissions.",
+    "failed_purge_lobby": "Failed to purge lobby channel! Bot may lack permissions.",
+}
+
 TRIVIA_CATEGORIES = [
     {"id": 9, "name": "General Knowledge"},
     {"id": 10, "name": "Entertainment: Books"},
