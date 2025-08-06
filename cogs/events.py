@@ -9,7 +9,9 @@ import nextcord
 from nextcord.ext import commands
 
 from instance import Instance, GameState
-from config import SERVER_DEFAULTS, ERROR_RESPONSE
+from config import SERVER_DEFAULTS, ERROR_RESPONSE, ROLE_NAME_FRUITS
+import random
+import time
 
 DEBUG = (
     "--debug" in sys.argv
@@ -131,6 +133,54 @@ async def find_or_create_lobby(guild: nextcord.Guild) -> nextcord.TextChannel:
 
     server_state.lobby_channel_id = lobby.id
     return lobby
+
+
+async def send_initial_lobby_message(
+    guild: nextcord.Guild, lobby_channel: nextcord.TextChannel
+):
+    server_state = get_server_state(guild.id)
+
+    lobby_exists = (
+        nextcord.utils.get(guild.text_channels, name="voyager-lobby") is not None
+    )
+    game_channels_exist = any(
+        channel.name.startswith("v-inst-") for channel in guild.text_channels
+    )
+
+    if lobby_exists and game_channels_exist and server_state.initialized:
+        existing_channels = await discover_existing_game_channels(guild)
+
+        embed = nextcord.Embed(
+            title="Voyaging",
+            description="Voyager is ready!",
+            color=nextcord.Color.green(),
+        )
+        embed.add_field(
+            name="Status",
+            value="Ready!",
+            inline=True,
+        )
+        max_channels = server_state.config.get("max_channels", 10)
+        embed.add_field(
+            name="Game Channels",
+            value=f"{len(existing_channels)}/{max_channels}",
+            inline=True,
+        )
+        embed.add_field(
+            name="Available",
+            value=f"{len(server_state.available_game_channels)}",
+            inline=True,
+        )
+        await lobby_channel.send(embed=embed)
+    else:
+        await lobby_channel.send(
+            f"Voyager is ready! Setup required.\n"
+            f"Status: Manual setup required\n"
+            f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
+            f"Setup:\n"
+            f"• Use `/server create` to create game channels\n"
+            f"• Server will auto-initialize when ready"
+        )
 
 
 async def discover_existing_game_channels(
@@ -310,9 +360,6 @@ async def create_game_role(
     server_state = get_server_state(guild.id)
 
     try:
-        import random
-        from config import ROLE_NAME_FRUITS
-
         random_fruit = random.choice(ROLE_NAME_FRUITS)
         role_name = f"Voyaging {random_fruit}"
 
@@ -378,7 +425,7 @@ async def assign_player_to_game_role(
             )
             try:
                 user = await guild.fetch_member(user_id)
-                logger.info(f"Successfully fetched user {user_id} from Discord API")
+                logger.debug(f"Successfully fetched user {user_id} from Discord API")
             except Exception as fetch_error:
                 logger.error(
                     f"Failed to fetch user {user_id} from Discord API: {fetch_error}"
@@ -392,7 +439,7 @@ async def assign_player_to_game_role(
 
         if role not in user.roles:
             await user.add_roles(role, reason=f"Player joined game: {game_name}")
-            logger.info(
+            logger.debug(
                 f"Assigned role {role.name} to user {user_id} for game {game_name}"
             )
         else:
@@ -449,7 +496,7 @@ async def cleanup_game_role(guild: nextcord.Guild, channel_id: int) -> bool:
 
         if role:
             await role.delete(reason="Game ended, cleaning up role")
-            logger.info(f"Deleted game role {role.name} for channel {channel_id}")
+            logger.debug(f"Deleted game role {role.name} for channel {channel_id}")
 
         del server_state.game_roles[channel_id]
         return True
@@ -561,39 +608,11 @@ async def initialize_app(bot):
 
                 server_state.initialized = True
 
-                embed = nextcord.Embed(
-                    title="Voyaging",
-                    description="Voyager is ready!",
-                    color=nextcord.Color.green(),
-                )
-                embed.add_field(
-                    name="Status",
-                    value="Ready!",
-                    inline=True,
-                )
-                max_channels = server_state.config.get("max_channels", 10)
-                embed.add_field(
-                    name="Game Channels",
-                    value=f"{len(existing_channels)}/{max_channels}",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Available",
-                    value=f"{len(server_state.available_game_channels)}",
-                    inline=True,
-                )
-                await lobby_channel.send(embed=embed)
+                await send_initial_lobby_message(guild, lobby_channel)
             else:
                 lobby_channel = await find_or_create_lobby(guild)
 
-                await lobby_channel.send(
-                    f"Voyager is ready! Setup required.\n"
-                    f"Status: ⚠️ Manual setup required\n"
-                    f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
-                    f"Setup:\n"
-                    f"• Use `/admin create` to create game channels\n"
-                    f"• Server will auto-initialize when ready"
-                )
+                await send_initial_lobby_message(guild, lobby_channel)
 
             logger.debug(f"Processed server {guild.name}")
 
@@ -640,11 +659,29 @@ class EventsCog(commands.Cog):
                 server_state.game_roles.clear()
             logger.info(f"Cleaned up {numroles} game roles for guild {guild_id}")
 
+            numinstances = len(server_state.instances)
+            if guild:
+                for channel_id in server_state.instances.copy().keys():
+                    try:
+                        channel = guild.get_channel(channel_id)
+                        if channel:
+                            await purge_game_channel(channel)
+                            logger.debug(
+                                f"Purged game channel {channel.name} during shutdown cleanup"
+                            )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to purge channel {channel_id} during shutdown: {e}"
+                        )
+                server_state.instances.clear()
+            logger.info(
+                f"Cleaned up {numinstances} game instances for guild {guild_id}"
+            )
+
     @commands.Cog.listener()
     async def on_ready(self):
         logger.info(f"Discord bot logged in as {self.bot.user}")
         logger.debug(f"Bot is in {len(self.bot.guilds)} servers")
-
         from cogs.tasks import set_bot, start_process_waitlist_task
 
         set_bot(self.bot)
@@ -757,39 +794,11 @@ class EventsCog(commands.Cog):
 
                 server_state.initialized = True
 
-                embed = nextcord.Embed(
-                    title="Voyaging",
-                    description="Voyager is ready!",
-                    color=nextcord.Color.green(),
-                )
-                embed.add_field(
-                    name="Status",
-                    value="Ready!",
-                    inline=True,
-                )
-                max_channels = server_state.config.get("max_channels", 10)
-                embed.add_field(
-                    name="Game Channels",
-                    value=f"{len(existing_channels)}/{max_channels}",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Available",
-                    value=f"{len(server_state.available_game_channels)}",
-                    inline=True,
-                )
-                await lobby_channel.send(embed=embed)
+                await send_initial_lobby_message(guild, lobby_channel)
             else:
                 lobby_channel = await find_or_create_lobby(guild)
 
-                await lobby_channel.send(
-                    f"Voyager added! Need to set up some channels first.\n"
-                    f"Status: ⚠️ Manual setup required\n"
-                    f"Missing: {'Lobby channel' if not lobby_exists else 'Game channels'}\n"
-                    f"Setup:\n"
-                    f"• Use `/admin create` to create game channels\n"
-                    f"• Server will auto-initialize when ready"
-                )
+                await send_initial_lobby_message(guild, lobby_channel)
 
             logger.debug(f"Bot joined server {guild.name}")
 
@@ -890,7 +899,6 @@ class EventsCog(commands.Cog):
 
             if instance.current_challenge and instance.state == GameState.IN_PROGRESS:
                 from cogs.game import manage_answer_reactions
-                import time
 
                 previous_ts = instance.submit_answer(
                     str(user_id), message.content, message.id
@@ -899,21 +907,27 @@ class EventsCog(commands.Cog):
                 player = instance.players.get(str(user_id))
                 if player and instance.round_start_time:
                     response_time = time.time() - instance.round_start_time
-                    if response_time <= instance.current_challenge.time_limit:
-                        await manage_answer_reactions(
-                            message, previous_ts, response_time
-                        )
+
+                    await manage_answer_reactions(message, previous_ts, response_time)
 
                     if instance.all_players_answered():
                         if channel_id in server_state.round_timers:
                             server_state.round_timers[channel_id].cancel()
                             del server_state.round_timers[channel_id]
-
-                        from cogs.game import auto_evaluate_round
-
+                            from cogs.game import auto_evaluate_round
                         await auto_evaluate_round(
                             message.guild.id, channel_id, message.guild.me._state.client
                         )
+
+        if (
+            channel_id == server_state.lobby_channel_id
+            and not message.author.bot
+            and not message.author.id == os.getenv("DISCORD_ADMIN_ID")
+        ):
+            try:
+                await message.delete()
+            except (nextcord.NotFound, nextcord.Forbidden, nextcord.HTTPException) as e:
+                pass
 
 
 def setup(bot):

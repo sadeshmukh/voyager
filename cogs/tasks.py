@@ -1,4 +1,4 @@
-import time
+# import time
 import logging
 import random
 from nextcord.ext import commands, tasks
@@ -75,7 +75,7 @@ async def process_waitlist():
                     # get_member fetches from cache first
                     user = guild.get_member(player_id)
                     if not user:
-                        logger.warning(
+                        logger.debug(
                             f"User {player_id} not found in guild cache, trying Discord API..."
                         )
                         try:
@@ -120,7 +120,7 @@ async def process_waitlist():
                             f"Check the channel to start playing!\n"
                             f"Ping another player in this channel to invite them to the game!"
                         )
-                        logger.info(
+                        logger.debug(
                             f"Updated waitlist message for user {player_id} with channel {game_channel.name}"
                         )
                     except Exception as e:
@@ -130,7 +130,7 @@ async def process_waitlist():
                     del server_state.pending_waitlist_interactions[player_id]
 
             welcome_embed = nextcord.Embed(
-                title=f"Welcome to {game_name}!",
+                title=f"Welcome to instance `{game_name}`!",
                 description="Ready to play! Invite more people or start the game.",
                 color=nextcord.Color.blue(),
             )
@@ -141,7 +141,7 @@ async def process_waitlist():
             )
             welcome_embed.add_field(
                 name="Status",
-                value="⏳ Waiting for more players (minimum 2 required to start)",
+                value="Waiting for more players (minimum 2 required to start)",
                 inline=False,
             )
             player_mentions = " ".join([f"<@{p}>" for p in players])

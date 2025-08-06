@@ -16,6 +16,10 @@ from config import (
     RESPONSE_TIME_THRESHOLDS,
     # SERVER_DEFAULTS,
     ERROR_RESPONSE,
+    MATH_OPERATIONS,
+    SPEED_CHALLENGE_PROMPTS,
+    TEXT_MODIFICATION_WORDS,
+    TEXT_MODIFICATION_TYPES,
 )
 import random
 import string
@@ -138,9 +142,9 @@ class GameControlView(nextcord.ui.View):
 
         asyncio.create_task(start_round())
 
-    @nextcord.ui.button(
-        label="Invite Player", style=nextcord.ButtonStyle.blurple, custom_id="gc_invite"
-    )
+    # @nextcord.ui.button(
+    #     label="Invite Player", style=nextcord.ButtonStyle.blurple, custom_id="gc_invite"
+    # )
     async def invite_button(
         self, _button: nextcord.ui.Button, interaction: Interaction
     ):
@@ -252,7 +256,7 @@ class GameControlView(nextcord.ui.View):
                     logger.error(f"Failed to assign role to user {user.id}: {e}")
 
                 await interaction.response.send_message(
-                    f"✅ {user.mention} has been invited to the game! Total players: {len(instance.players)}"
+                    f"{user.mention} has been invited to the game! Total players: {len(instance.players)}"
                 )
 
         await interaction.response.send_modal(InviteModal(self.channel_id))
@@ -279,6 +283,32 @@ class GameControlView(nextcord.ui.View):
         await interaction.response.send_message(
             "Game cancelled and channel reset.", ephemeral=True
         )
+
+
+class EndGameView(nextcord.ui.View):
+    def __init__(self, guild_id: int, channel_id: int, bot):
+        super().__init__(timeout=30)
+        self.guild_id = guild_id
+        self.channel_id = channel_id
+        self.bot = bot
+
+    async def _cleanup(self):
+        from cogs.events import get_server_state, release_game_channel
+
+        server_state = get_server_state(self.guild_id)
+        if self.channel_id in server_state.instances:
+            del server_state.instances[self.channel_id]
+        guild = self.bot.get_guild(self.guild_id)
+        if guild:
+            await release_game_channel(guild, self.channel_id)
+
+    @nextcord.ui.button(label="End", style=nextcord.ButtonStyle.red, custom_id="eg_end")
+    async def end_button(self, _button: nextcord.ui.Button, interaction: Interaction):
+        await self._cleanup()
+        await interaction.response.send_message("Game ended.", ephemeral=True)
+
+    async def on_timeout(self):
+        await self._cleanup()
 
 
 def create_progress_bar(current_round: int, total_rounds: int) -> str:
@@ -314,13 +344,22 @@ def create_round_embed(instance: Instance, challenge: Challenge) -> nextcord.Emb
 
 async def display_memory_sequence(channel, challenge: Challenge):
     sequence = challenge.metadata["sequence"]
-    message = await channel.send("Watch carefully...")
+
+    embed = nextcord.Embed(
+        title="Memory",
+        description="Watch carefully...",
+        color=nextcord.Color.purple(),
+    )
+
+    message = await channel.send(embed=embed)
 
     for char in sequence:
-        await message.edit(content=char)
+        embed.description = char
+        await message.edit(embed=embed)
         await asyncio.sleep(1.5)
 
-    await message.edit(content="Remember?")
+    embed.description = "Remember?"
+    await message.edit(embed=embed)
 
     challenge.metadata["displayed"] = True
     challenge.metadata["message_id"] = message.id
@@ -328,8 +367,6 @@ async def display_memory_sequence(channel, challenge: Challenge):
 
 def generate_challenge(game_type: GameType) -> Challenge:
     if game_type == GameType.QUICK_MATH:
-        from config import MATH_OPERATIONS
-
         op_symbol, op_name = random.choice(MATH_OPERATIONS)
 
         op_funcs = {
@@ -360,8 +397,6 @@ def generate_challenge(game_type: GameType) -> Challenge:
         )
 
     elif game_type == GameType.SPEED_CHALLENGE:
-        from config import SPEED_CHALLENGE_PROMPTS
-
         prompt = random.choice(SPEED_CHALLENGE_PROMPTS)
         if "'" in prompt:  # handle "Type 'I LOSE' to win this round!"
             target_word = prompt.split("'")[1]
@@ -377,11 +412,7 @@ def generate_challenge(game_type: GameType) -> Challenge:
         )
 
     elif game_type == GameType.TEXT_MODIFICATION:
-        from config import TEXT_MODIFICATION_WORDS
-
         word = random.choice(TEXT_MODIFICATION_WORDS)
-
-        from config import TEXT_MODIFICATION_TYPES
 
         mod_type = random.choice(TEXT_MODIFICATION_TYPES)
 
@@ -625,7 +656,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
         await send_host_message(channel_id, "final_results", bot)
         final_results = instance.end_game()
 
-        embed = nextcord.Embed(title="Game Complete!", color=nextcord.Color.green())
+        embed = nextcord.Embed(title="THE END", color=nextcord.Color.green())
 
         if final_results["winners"]:
             winner_names = [f"<@{uid}>" for uid in final_results["winners"]]
@@ -642,11 +673,11 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
         await channel.send(embed=embed)
         await send_host_message(channel_id, "outro", bot)
 
-        if channel_id in server_state.instances:
-            del server_state.instances[channel_id]
-            guild = channel.guild
-            if guild:
-                await release_game_channel(guild, channel_id)
+        view = EndGameView(guild_id, channel_id, bot)
+        await channel.send(
+            "Click **End** to close this game. It will close automatically in 30 seconds.",
+            view=view,
+        )
     else:
 
         async def start_next():

@@ -2,7 +2,7 @@ import logging
 import nextcord
 from nextcord.ext import commands
 from nextcord import Interaction
-from typing import Optional
+# from typing import Optional
 
 from config import SERVER_CONFIG_OPTIONS, ERROR_RESPONSE
 from cogs.events import get_server_state
@@ -112,7 +112,7 @@ class ServerCog(commands.Cog):
             description = setting_info["description"]
 
             if setting_info["type"] == "bool":
-                value_display = "✅ True" if current_value else "❌ False"
+                value_display = "True" if current_value else "False"
             else:
                 value_display = str(current_value)
 
@@ -167,14 +167,14 @@ class ServerCog(commands.Cog):
             )
         else:
             embed.add_field(
-                name="✅ Server Ready",
+                name="Server Ready",
                 value="Your server is properly set up and ready for games!",
                 inline=False,
             )
 
         embed.add_field(
             name="Current Status",
-            value=f"**Initialized:** {'✅ Yes' if server_state.initialized else '❌ No'}\n"
+            value=f"**Initialized:** {'Yes' if server_state.initialized else 'No'}\n"
             f"**Game Channels:** {len(server_state.all_game_channels)}/{server_state.config.get('max_channels', 10)}\n"
             f"**Available Channels:** {len(server_state.available_game_channels)}",
             inline=False,

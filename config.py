@@ -187,13 +187,13 @@ RIDDLES_CSV_PATH = "riddles.csv"
 host_dialogue = {
     "intro": [
         "Alright, let's do this!",
-        "Time to see what you've got",
+        "Time to see what you've got...",
         "Who's gonna win this one?",
     ],
     "main_round": [
         "Next round!",
         "Here we go again...",
-        "Let's see those answers",
+        "I'm ready for the next answers - are you?",
     ],
     "final_results": [
         "Final scores coming up...",
@@ -202,7 +202,7 @@ host_dialogue = {
     ],
     "outro": [
         "Good game everyone!",
-        "GG!",
+        "GGs",
         "That was fun!",
     ],
 }

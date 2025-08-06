@@ -1,39 +1,42 @@
 # Voyager
 
 A dynamic party game bot for Discord! 
+Try it out here: https://discord.gg/UWpehz7ttb
 
-## Too short, didn't read?
+## Too short, need more?
 
 Voyager creates dynamic party game instances in Discord! Players compete in various mini-games like quick math, trivia, speed challenges, and word games. Failed players face elimination rounds with different challenges. It's very low friction - just /waitlist, and you're in!
 
-## Game Types
-
-- **Quick Math**: Fast arithmetic challenges
-- **Trivia**: Knowledge-based questions  
-- **Speed Challenge**: First to respond wins
-- **Text Modification**: Word puzzles and transformations
-- **Memory Game**: Remember sequences and patterns
-- **Emoji Challenge**: Find emojis containing specific letters
-- **Riddles**: Brain teasers and logic puzzles
-- **Collaborative**: Team-based challenges
+The following game types are available: quickmath, trivia, speed, textmod, memory, emoji, riddle
 
 ## How It Works
 
 ### Example Session
 ```
-GAME CHOSEN: Quick Math!
+Player uses /waitlist in #voyager-lobby
+-> Gets assigned to #v-inst-awesome-game
+-> Invites friends by @mentioning them in lobby
+
+Game starts after clicking "Start" in the instance channel:
+"Alright, let's do this!"
+
+Round 1 - Quick Math:
 What's 47 + 83?
 Time limit: 8 seconds
 
-[Players submit answers...]
+[Players type answers in chat...]
 
 Results:
-✅ Correct: @player1 @player2  
-❌ Incorrect/No Answer: @player3 @player4
+Correct: @player1 (18 pts) @player2 (10 pts)  
+Incorrect/No Answer: @player3 @player4
 
-🏆 Live Leaderboard:
-@player1: **15** pts
-@player2: **12** pts
+Leaderboard:
+@player1: **18** pts
+@player2: **10** pts
+@player3: **0** pts
+@player4: **0** pts
+
+[Game continues for 15-20 rounds with different game types]
 ```
 
 ## Discord Setup
@@ -41,18 +44,18 @@ Results:
 1. Create a Discord application at https://discord.com/developers/applications
 2. Create a bot for your application and get the bot token
 3. Enable necessary bot permissions:
-   - Send Messages
-   - Use Slash Commands
-   - Manage Channels
-   - Manage Roles
-   - Read Message History
-4. Enable the MEMBERS and MESSAGE_CONTENT intents in the Discord Developer Portal
+   - **Send Messages** - For game communication
+   - **Read Messages** - To read player responses
+   - **Manage Channels** - To create and manage game channels
+   - **Manage Messages** - To delete messages and purge channels
+   - **Embed Links** - For rich game embeds and leaderboards
+   - **Manage Roles** - To create and assign game roles
+4. Enable the **MESSAGE_CONTENT** intent in the Discord Developer Portal
 5. Set up environment variables in `.env`:
 
 ```env
 DISCORD_BOT_TOKEN=your-discord-bot-token
-ADMIN_ID=your-discord-user-id
-LOBBY_CHANNEL_ID=your-lobby-channel-id
+DISCORD_ADMIN_ID=your-discord-user-id
 
 # AI Configuration (optional)
 AI_PROVIDER=hackclub  # or "ollama"
@@ -86,6 +89,8 @@ To use Ollama for answer verification:
    OLLAMA_MODEL=gemma2:2b
    ```
 
+(I already had gemma2:2b installed, and it was about the lightest model I could find that was still good at verifying yes/no)
+
 ## Usage
 
 Run the bot:
@@ -100,20 +105,25 @@ uv run discord.py
 - `/waitlist` - Join the queue for a game
 - `/state` - Check game/queue status
 
-**Game Instance Commands:**
+**Game Instance Commands:** (not necessary)
 - `/start` - Start a game in an instance
-- `/next-round` - Start next main round (random game type)
 - `/state` - Check detailed game status
+
+**Server Commands:**
+- `/server create` - Create game channels (requires Administrator permissions on server)
+- `/server config` - Configure server settings (requires Administrator permissions on server)
+
+**Admin Commands:**
+- `/admin create` - Create game channels (requires ADMIN_ID)
+- `/admin config` - Configure server settings (requires ADMIN_ID)
 
 ### Game Flow
 
 1. Players join the waitlist in the lobby channel
-2. They get assigned to a game channel when enough players are ready
+2. They get assigned to a game channel on their own and can invite others to join
 3. Games run for 15-20 rounds 
-4. Players compete in various mini-games with speed bonuses
-5. Early round ending when all players answer
-6. Final scores and winner announcement
-
+4. Players compete in various mini-games
+5. Final scores and winner announcement
 
 ## Adding New Game Types
 
@@ -140,11 +150,9 @@ elif game_type == GameType.RIDDLE:
     )
 ```
 
-
 ---
 
 ## ARCHIVE: Slack Support
-
 
 ### Original Slack Setup
 

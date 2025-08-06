@@ -4,6 +4,7 @@ from nextcord.ext import commands
 from nextcord import Interaction
 
 from config import MAX_CHANNELS, ERROR_RESPONSE
+# from discord import DISCORD_ADMIN_ID
 
 logger = logging.getLogger("voyager_discord")
 
@@ -24,15 +25,6 @@ class AdminCog(commands.Cog):
         name="create", description="Create a new game channel (Admin only)"
     )
     async def admin_create_channel(self, interaction: Interaction, name: str):
-        from discord import DISCORD_ADMIN_ID
-
-        if interaction.user.id != DISCORD_ADMIN_ID:
-            await interaction.response.send_message(
-                "This command is only available to the bot administrator.",
-                ephemeral=True,
-            )
-            return
-
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
@@ -94,15 +86,6 @@ class AdminCog(commands.Cog):
         name="instance", description="Create a new game instance (Admin only)"
     )
     async def admin_create_instance(self, interaction: Interaction, name: str):
-        from discord import DISCORD_ADMIN_ID
-
-        if interaction.user.id != DISCORD_ADMIN_ID:
-            await interaction.response.send_message(
-                "This command is only available to the bot administrator.",
-                ephemeral=True,
-            )
-            return
-
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
@@ -143,15 +126,6 @@ class AdminCog(commands.Cog):
         name="invite", description="Invite a user to the current game (Admin only)"
     )
     async def admin_invite_user(self, interaction: Interaction, user: nextcord.Member):
-        from discord import DISCORD_ADMIN_ID
-
-        if interaction.user.id != DISCORD_ADMIN_ID:
-            await interaction.response.send_message(
-                "This command is only available to the bot administrator.",
-                ephemeral=True,
-            )
-            return
-
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
@@ -210,15 +184,6 @@ class AdminCog(commands.Cog):
         description="Purge all messages from the lobby channel (Admin only)",
     )
     async def admin_purge_lobby(self, interaction: Interaction):
-        from discord import DISCORD_ADMIN_ID
-
-        if interaction.user.id != DISCORD_ADMIN_ID:
-            await interaction.response.send_message(
-                "This command is only available to the bot administrator.",
-                ephemeral=True,
-            )
-            return
-
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
@@ -226,7 +191,7 @@ class AdminCog(commands.Cog):
             )
             return
 
-        from cogs.events import find_or_create_lobby
+        from cogs.events import find_or_create_lobby, send_initial_lobby_message
 
         # server_state = get_server_state(guild.id)
 
@@ -256,6 +221,8 @@ class AdminCog(commands.Cog):
                     f"Admin purged {deleted_count} messages from lobby in {guild.name}"
                 )
 
+            await send_initial_lobby_message(guild, lobby_channel)
+
             await interaction.followup.send(
                 f"Lobby purged successfully.\nChannel: <#{lobby_channel.id}>",
                 ephemeral=True,
@@ -273,15 +240,6 @@ class AdminCog(commands.Cog):
         description="Purge all game roles (Admin only)",
     )
     async def admin_purge_roles(self, interaction: Interaction):
-        from discord import DISCORD_ADMIN_ID
-
-        if interaction.user.id != DISCORD_ADMIN_ID:
-            await interaction.response.send_message(
-                "This command is only available to the bot administrator.",
-                ephemeral=True,
-            )
-            return
-
         guild = interaction.guild
         if not guild:
             await interaction.response.send_message(
