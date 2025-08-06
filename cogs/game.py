@@ -13,7 +13,6 @@ from config import (
     multi_player_config,
     host_dialogue,
     dialogue_timing,
-    MAX_CHANNELS,
     RESPONSE_TIME_THRESHOLDS,
     # SERVER_DEFAULTS,
     ERROR_RESPONSE,
@@ -277,7 +276,9 @@ class GameControlView(nextcord.ui.View):
         guild = interaction.guild
         if guild:
             await release_game_channel(guild, self.channel_id)
-        await interaction.response.send_message("Game cancelled and channel reset.")
+        await interaction.response.send_message(
+            "Game cancelled and channel reset.", ephemeral=True
+        )
 
 
 def create_progress_bar(current_round: int, total_rounds: int) -> str:
@@ -309,6 +310,20 @@ def create_round_embed(instance: Instance, challenge: Challenge) -> nextcord.Emb
         inline=True,
     )
     return embed
+
+
+async def display_memory_sequence(channel, challenge: Challenge):
+    sequence = challenge.metadata["sequence"]
+    message = await channel.send("Watch carefully...")
+
+    for char in sequence:
+        await message.edit(content=char)
+        await asyncio.sleep(1.5)
+
+    await message.edit(content="Remember?")
+
+    challenge.metadata["displayed"] = True
+    challenge.metadata["message_id"] = message.id
 
 
 def generate_challenge(game_type: GameType) -> Challenge:
@@ -394,15 +409,17 @@ def generate_challenge(game_type: GameType) -> Challenge:
         )
 
     elif game_type == GameType.MEMORY_GAME:
-        seq_len = random.randint(3, 6)
-        sequence = [str(random.randint(1, 9)) for _ in range(seq_len)]
-        display = " ".join(sequence)
+        sequence_length = random.randint(5, 8)
+        sequence = "".join(
+            random.choices(string.ascii_uppercase + string.digits, k=sequence_length)
+        )
+
         return Challenge(
             challenge_type=game_type,
-            question=f"Remember this sequence: {display}",
-            correct_answer=[display],
-            time_limit=seq_len * 3 + 4,
-            metadata={"memory_based": True, "sequence": sequence},
+            question="Watch carefully...",  # initial message
+            correct_answer=[sequence],
+            time_limit=30,
+            metadata={"memory_game": True, "sequence": sequence, "displayed": False},
         )
 
     elif game_type == GameType.EMOJI_CHALLENGE:
@@ -563,7 +580,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
     if results["correct_players"]:
         correct_names = [f"<@{uid}>" for uid in results["correct_players"]]
         embed.add_field(
-            name="✅ Correct",
+            name="Correct",
             value=", ".join(correct_names) if correct_names else "None",
             inline=False,
         )
@@ -571,7 +588,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
     if results["failed_players"]:
         failed_names = [f"<@{uid}>" for uid in results["failed_players"]]
         embed.add_field(
-            name="❌ Incorrect/No Answer",
+            name="Incorrect/No Answer",
             value=", ".join(failed_names) if failed_names else "None",
             inline=False,
         )
@@ -585,7 +602,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
 
     if leaderboard:
         embed.add_field(
-            name="🏆 Live Leaderboard",
+            name="Leaderboard",
             value="\n".join(leaderboard[:5]),
             inline=False,
         )
@@ -594,7 +611,7 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
 
     if instance.all_players_answered():
         early_end_embed = nextcord.Embed(
-            title="⏰ Round Ended Early!",
+            title="Round Ended Early!",
             description="All players have answered!",
             color=nextcord.Color.green(),
         )
@@ -637,13 +654,23 @@ async def auto_evaluate_round(guild_id: int, channel_id: int, bot=None):
             if channel_id in server_state.instances:
                 await send_host_message(channel_id, "main_round", bot)
                 challenge = instance.start_main_round()
-                embed = create_round_embed(instance, challenge)
 
-                await channel.send(embed=embed)
-
-                schedule_round_evaluation(
-                    guild_id, channel_id, challenge.time_limit, bot
-                )
+                if challenge.challenge_type == GameType.MEMORY_GAME:
+                    await display_memory_sequence(channel, challenge)
+                    sequence_length = len(challenge.metadata["sequence"])
+                    display_time = sequence_length * 1.5 + 2
+                    schedule_round_evaluation(
+                        guild_id,
+                        channel_id,
+                        challenge.time_limit + int(display_time),
+                        bot,
+                    )
+                else:
+                    embed = create_round_embed(instance, challenge)
+                    await channel.send(embed=embed)
+                    schedule_round_evaluation(
+                        guild_id, channel_id, challenge.time_limit, bot
+                    )
 
         asyncio.create_task(start_next())
 
@@ -677,18 +704,26 @@ async def manage_answer_reactions(
     if previous_ts:
         try:
             previous_message = await message.channel.fetch_message(int(previous_ts))
-            await previous_message.remove_reaction("👍", message.guild.me)
-            await previous_message.remove_reaction("⚡", message.guild.me)
-            await previous_message.remove_reaction("🐌", message.guild.me)
+            for reaction_emoji in ["👍", "⚡", "🐌"]:
+                try:
+                    await previous_message.remove_reaction(
+                        reaction_emoji, message.guild.me
+                    )
+                except (nextcord.NotFound, nextcord.HTTPException, ValueError):
+                    pass
         except (nextcord.NotFound, nextcord.HTTPException, ValueError):
-            pass  # message probably already unreacted?
+            pass
 
-    if response_time <= RESPONSE_TIME_THRESHOLDS["fast"]:
-        await message.add_reaction("⚡")
-    elif response_time <= RESPONSE_TIME_THRESHOLDS["medium"]:
-        await message.add_reaction("👍")
-    else:
-        await message.add_reaction("🐌")
+    try:
+        if response_time <= RESPONSE_TIME_THRESHOLDS["fast"]:
+            await message.add_reaction("⚡")
+        elif response_time <= RESPONSE_TIME_THRESHOLDS["medium"]:
+            await message.add_reaction("👍")
+        else:
+            await message.add_reaction("🐌")
+    except (nextcord.NotFound, nextcord.HTTPException, ValueError) as e:
+        logger.warning(f"Failed to add reaction to message {message.id}: {e}")
+        pass
 
 
 class GameCog(commands.Cog):
@@ -832,9 +867,10 @@ class GameCog(commands.Cog):
             embed.add_field(
                 name="Games Waiting to Start", value=str(waiting_games), inline=True
             )
+            max_channels = server_state.config.get("max_channels", 10)
             embed.add_field(
                 name="Available Game Channels",
-                value=f"{len(server_state.available_game_channels)}/{MAX_CHANNELS}",
+                value=f"{len(server_state.available_game_channels)}/{max_channels}",
                 inline=True,
             )
         else:
@@ -981,15 +1017,25 @@ class GameCog(commands.Cog):
             if channel_id in server_state.instances:
                 await send_host_message(channel_id, "main_round", self.bot)
                 challenge = instance.start_main_round()
-                embed = create_round_embed(instance, challenge)
 
                 channel = guild.get_channel(channel_id)
                 if channel:
-                    await channel.send(embed=embed)
-
-                schedule_round_evaluation(
-                    guild.id, channel_id, challenge.time_limit, self.bot
-                )
+                    if challenge.challenge_type == GameType.MEMORY_GAME:
+                        await display_memory_sequence(channel, challenge)
+                        sequence_length = len(challenge.metadata["sequence"])
+                        display_time = sequence_length * 1.5 + 2
+                        schedule_round_evaluation(
+                            guild.id,
+                            channel_id,
+                            challenge.time_limit + int(display_time),
+                            self.bot,
+                        )
+                    else:
+                        embed = create_round_embed(instance, challenge)
+                        await channel.send(embed=embed)
+                        schedule_round_evaluation(
+                            guild.id, channel_id, challenge.time_limit, self.bot
+                        )
 
         asyncio.create_task(start_first_round())
 
@@ -1022,11 +1068,20 @@ class GameCog(commands.Cog):
 
         await send_host_message(channel_id, "main_round", self.bot)
         challenge = instance.start_main_round()
-        embed = create_round_embed(instance, challenge)
 
-        await interaction.response.send_message(embed=embed)
-
-        schedule_round_evaluation(guild.id, channel_id, challenge.time_limit, self.bot)
+        if challenge.challenge_type == GameType.MEMORY_GAME:
+            await display_memory_sequence(interaction.channel, challenge)
+            sequence_length = len(challenge.metadata["sequence"])
+            display_time = sequence_length * 1.5 + 2
+            schedule_round_evaluation(
+                guild.id, channel_id, challenge.time_limit + int(display_time), self.bot
+            )
+        else:
+            embed = create_round_embed(instance, challenge)
+            await interaction.response.send_message(embed=embed)
+            schedule_round_evaluation(
+                guild.id, channel_id, challenge.time_limit, self.bot
+            )
 
 
 def setup(bot):

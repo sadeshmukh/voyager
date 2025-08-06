@@ -24,9 +24,9 @@ class AdminCog(commands.Cog):
         name="create", description="Create a new game channel (Admin only)"
     )
     async def admin_create_channel(self, interaction: Interaction, name: str):
-        from discord import ADMIN_ID
+        from discord import DISCORD_ADMIN_ID
 
-        if interaction.user.id != ADMIN_ID:
+        if interaction.user.id != DISCORD_ADMIN_ID:
             await interaction.response.send_message(
                 "This command is only available to the bot administrator.",
                 ephemeral=True,
@@ -94,9 +94,9 @@ class AdminCog(commands.Cog):
         name="instance", description="Create a new game instance (Admin only)"
     )
     async def admin_create_instance(self, interaction: Interaction, name: str):
-        from discord import ADMIN_ID
+        from discord import DISCORD_ADMIN_ID
 
-        if interaction.user.id != ADMIN_ID:
+        if interaction.user.id != DISCORD_ADMIN_ID:
             await interaction.response.send_message(
                 "This command is only available to the bot administrator.",
                 ephemeral=True,
@@ -143,9 +143,9 @@ class AdminCog(commands.Cog):
         name="invite", description="Invite a user to the current game (Admin only)"
     )
     async def admin_invite_user(self, interaction: Interaction, user: nextcord.Member):
-        from discord import ADMIN_ID
+        from discord import DISCORD_ADMIN_ID
 
-        if interaction.user.id != ADMIN_ID:
+        if interaction.user.id != DISCORD_ADMIN_ID:
             await interaction.response.send_message(
                 "This command is only available to the bot administrator.",
                 ephemeral=True,
@@ -210,9 +210,9 @@ class AdminCog(commands.Cog):
         description="Purge all messages from the lobby channel (Admin only)",
     )
     async def admin_purge_lobby(self, interaction: Interaction):
-        from discord import ADMIN_ID
+        from discord import DISCORD_ADMIN_ID
 
-        if interaction.user.id != ADMIN_ID:
+        if interaction.user.id != DISCORD_ADMIN_ID:
             await interaction.response.send_message(
                 "This command is only available to the bot administrator.",
                 ephemeral=True,
@@ -257,7 +257,8 @@ class AdminCog(commands.Cog):
                 )
 
             await interaction.followup.send(
-                f"Lobby purged successfully.\nChannel: <#{lobby_channel.id}>"
+                f"Lobby purged successfully.\nChannel: <#{lobby_channel.id}>",
+                ephemeral=True,
             )
 
         except Exception as e:
@@ -272,9 +273,9 @@ class AdminCog(commands.Cog):
         description="Purge all game roles (Admin only)",
     )
     async def admin_purge_roles(self, interaction: Interaction):
-        from discord import ADMIN_ID
+        from discord import DISCORD_ADMIN_ID
 
-        if interaction.user.id != ADMIN_ID:
+        if interaction.user.id != DISCORD_ADMIN_ID:
             await interaction.response.send_message(
                 "This command is only available to the bot administrator.",
                 ephemeral=True,

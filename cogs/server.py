@@ -39,14 +39,14 @@ class ServerCog(commands.Cog):
             return
 
         from cogs.events import ensure_voyager_category
-        from config import MAX_CHANNELS
 
         server_state = get_server_state(guild.id)
+        max_channels = server_state.config.get("max_channels", 10)
 
         total_channels = len(server_state.all_game_channels)
-        if total_channels >= MAX_CHANNELS:
+        if total_channels >= max_channels:
             await interaction.response.send_message(
-                ERROR_RESPONSE["max_channels_reached"],
+                f"Maximum number of game channels ({max_channels}) reached! Cannot create more channels.",
                 ephemeral=True,
             )
             return
@@ -78,7 +78,7 @@ class ServerCog(commands.Cog):
                 f"Game channel created: {name}\n"
                 f"Channel: <#{channel.id}>\n"
                 f"Status: Available for games\n"
-                f"Channels Total: {len(server_state.all_game_channels)}/{MAX_CHANNELS}"
+                f"Channels Total: {len(server_state.all_game_channels)}/{max_channels}"
             )
 
         except Exception as e:
@@ -117,7 +117,7 @@ class ServerCog(commands.Cog):
                 value_display = str(current_value)
 
             embed.add_field(
-                name=f"{setting_name.replace('_', ' ').title()}",
+                name=f"`{setting_name}`",
                 value=f"**Current:** {value_display}\n{description}",
                 inline=False,
             )
@@ -133,6 +133,62 @@ class ServerCog(commands.Cog):
     @server_group.subcommand(name="conf", description="Configure server settings")
     async def server_conf_group(self, interaction: Interaction):
         pass
+
+    @server_group.subcommand(
+        name="setup", description="Quick setup guide for new servers"
+    )
+    async def server_setup_help(self, interaction: Interaction):
+        guild = interaction.guild
+        if not guild:
+            await interaction.response.send_message(
+                ERROR_RESPONSE["server_only"], ephemeral=True
+            )
+            return
+
+        server_state = get_server_state(guild.id)
+
+        embed = nextcord.Embed(
+            title="Server Setup Guide",
+            description="Steps to get Voyager working in your server",
+            color=nextcord.Color.blue(),
+        )
+
+        if not server_state.initialized:
+            embed.add_field(
+                name="Step 1: Create Game Channels",
+                value="Use `/server create [name]` to create your first game channel\n"
+                "Example: `/server create test` creates `v-inst-test`",
+                inline=False,
+            )
+            embed.add_field(
+                name="Step 2: Wait for Auto-Initialization",
+                value="Once you have at least one game channel, the server will automatically initialize",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="✅ Server Ready",
+                value="Your server is properly set up and ready for games!",
+                inline=False,
+            )
+
+        embed.add_field(
+            name="Current Status",
+            value=f"**Initialized:** {'✅ Yes' if server_state.initialized else '❌ No'}\n"
+            f"**Game Channels:** {len(server_state.all_game_channels)}/{server_state.config.get('max_channels', 10)}\n"
+            f"**Available Channels:** {len(server_state.available_game_channels)}",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Next Steps",
+            value="• Use `/waitlist` in the lobby to join games\n"
+            "• Use `/state` to check current status\n"
+            "• Use `/server config` to view all settings",
+            inline=False,
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @server_conf_group.subcommand(
         name="set", description="Set a server configuration value"

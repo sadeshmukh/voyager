@@ -22,8 +22,8 @@ if not logger.handlers:
 
 load_dotenv()
 
-ADMIN_ID = int(os.environ.get("DISCORD_ADMIN_ID", "0"))
-if not ADMIN_ID:
+DISCORD_ADMIN_ID = int(os.environ.get("DISCORD_ADMIN_ID", "0"))
+if not DISCORD_ADMIN_ID:
     raise ValueError("DISCORD_ADMIN_ID environment variable must be set")
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")

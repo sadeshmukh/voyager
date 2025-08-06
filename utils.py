@@ -17,13 +17,21 @@ def get_trivia_question(category: str = "") -> t.Tuple[str, str]:
             category_info = TRIVIA_CATEGORIES[int(category)]
             category_id = category_info["id"]
 
-        response = requests.get(
-            f"https://opentdb.com/api.php?amount=1&category={category_id}"
-        )
-        data = response.json()
-        question = html.unescape(data["results"][0]["question"])
-        answer = html.unescape(data["results"][0]["correct_answer"])
-        return question, [answer]  # for multiple correct answers
+        for _ in range(5):
+            response = requests.get(
+                f"https://opentdb.com/api.php?amount=1&category={category_id}"
+            )
+            data = response.json()
+            question = html.unescape(data["results"][0]["question"])
+            answer = html.unescape(data["results"][0]["correct_answer"])
+
+            if not question.lower().startswith(
+                "which of the"
+            ):  # filters "which of these" and "which of the following"
+                return question, [answer]
+
+        # when I start seeing these I know I screwed up
+        return "What is the capital of France?", ["Paris"]
     except Exception:
         return "What is the capital of France?", ["Paris"]
 

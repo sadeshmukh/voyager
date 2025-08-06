@@ -81,7 +81,7 @@ async def process_waitlist():
                         try:
                             # fetch forcefuolly retrieves from API - we try to avoid this
                             user = await guild.fetch_member(player_id)
-                            logger.info(
+                            logger.debug(
                                 f"Successfully fetched user {player_id} from Discord API"
                             )
                         except Exception as fetch_error:
@@ -117,7 +117,8 @@ async def process_waitlist():
                         await interaction.edit_original_message(
                             content=f"You've been assigned to {game_channel.mention}!\n"
                             f"Game: `{game_name}`\n"
-                            f"Check the channel to start playing!"
+                            f"Check the channel to start playing!\n"
+                            f"Ping another player in this channel to invite them to the game!"
                         )
                         logger.info(
                             f"Updated waitlist message for user {player_id} with channel {game_channel.name}"

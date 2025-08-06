@@ -21,6 +21,13 @@ SERVER_DEFAULTS = {
     "hoist_roles": True,
     "rounds_per_game": 15,
     "role_color": "blue",
+    "default_time_limit": 30,
+    "min_players_to_start": 2,
+    "max_players_per_game": 8,
+    "waitlist_timeout": 5,
+    "enable_speed_bonus": True,
+    "enable_first_answer_bonus": True,
+    "game_types_enabled": "quick_math,trivia,speed_challenge,text_modification,memory,emoji,riddles,collaborative",
 }
 
 SERVER_CONFIG_OPTIONS = {
@@ -50,6 +57,62 @@ SERVER_CONFIG_OPTIONS = {
             "orange",
             "pink",
             "teal",
+        ],
+    },
+    "max_channels": {
+        "type": "int",
+        "description": "Maximum number of game channels allowed (3-10)",
+        "default": 10,
+        "min": 3,
+        "max": 10,
+    },
+    "default_time_limit": {
+        "type": "int",
+        "description": "Default time limit for challenges in seconds (max 60)",
+        "default": 30,
+        "min": 10,
+        "max": 60,
+    },
+    "min_players_to_start": {
+        "type": "int",
+        "description": "Minimum players required to start a game (max 10)",
+        "default": 2,
+        "min": 1,
+        "max": 10,
+    },
+    "max_players_per_game": {
+        "type": "int",
+        "description": "Maximum players allowed per game (max 20)",
+        "default": 8,
+        "min": 2,
+        "max": 20,
+    },
+    "waitlist_timeout": {
+        "type": "int",
+        "description": "Minutes to wait before starting game with fewer players (max 30)",
+        "default": 5,
+        "min": 1,
+        "max": 30,
+    },
+    "enable_speed_bonus": {
+        "type": "bool",
+        "description": "Whether to award speed bonuses for fast answers",
+        "default": True,
+    },
+    "enable_first_answer_bonus": {
+        "type": "bool",
+        "description": "Whether to award bonus points for first correct answer",
+        "default": True,
+    },
+    "game_types_enabled": {
+        "type": "str",
+        "description": "Comma-separated list of enabled game types",
+        "default": "quick_math,trivia,speed_challenge,text_modification,memory,emoji,riddles,collaborative",
+        "choices": [
+            "quick_math,trivia,speed_challenge,text_modification,memory,emoji,riddles,collaborative",
+            "quick_math,trivia,speed_challenge",
+            "trivia,riddles",
+            "quick_math,speed_challenge,text_modification",
         ],
     },
 }

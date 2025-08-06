@@ -9,7 +9,7 @@ import nextcord
 from nextcord.ext import commands
 
 from instance import Instance, GameState
-from config import MAX_CHANNELS, SERVER_DEFAULTS, ERROR_RESPONSE
+from config import SERVER_DEFAULTS, ERROR_RESPONSE
 
 DEBUG = (
     "--debug" in sys.argv
@@ -63,6 +63,16 @@ class ServerState:
                 "hoist_roles": SERVER_DEFAULTS["hoist_roles"],
                 "rounds_per_game": SERVER_DEFAULTS["rounds_per_game"],
                 "role_color": SERVER_DEFAULTS["role_color"],
+                "max_channels": SERVER_DEFAULTS["max_channels"],
+                "default_time_limit": SERVER_DEFAULTS["default_time_limit"],
+                "min_players_to_start": SERVER_DEFAULTS["min_players_to_start"],
+                "max_players_per_game": SERVER_DEFAULTS["max_players_per_game"],
+                "waitlist_timeout": SERVER_DEFAULTS["waitlist_timeout"],
+                "enable_speed_bonus": SERVER_DEFAULTS["enable_speed_bonus"],
+                "enable_first_answer_bonus": SERVER_DEFAULTS[
+                    "enable_first_answer_bonus"
+                ],
+                "game_types_enabled": SERVER_DEFAULTS["game_types_enabled"],
             }
 
 
@@ -138,7 +148,9 @@ async def discover_existing_game_channels(
             )
 
     game_channels.sort(key=lambda c: c.created_at)
-    game_channels = game_channels[:MAX_CHANNELS]
+    server_state = get_server_state(guild.id)
+    max_channels = server_state.config.get("max_channels", 10)
+    game_channels = game_channels[:max_channels]
 
     server_state.all_game_channels = [c.id for c in game_channels]
 
@@ -312,8 +324,9 @@ async def create_game_role(
             "yellow": nextcord.Color.yellow(),
             "purple": nextcord.Color.purple(),
             "orange": nextcord.Color.orange(),
-            "pink": nextcord.Color.pink(),
+            "pink": nextcord.Color.from_rgb(255, 105, 180),
             "teal": nextcord.Color.teal(),
+            "default": nextcord.Color.default(),
         }
         role_color = color_map.get(color_name, nextcord.Color.blue())
 
@@ -550,7 +563,7 @@ async def initialize_app(bot):
 
                 embed = nextcord.Embed(
                     title="Voyaging",
-                    description="Voyager is ready to host games.",
+                    description="Voyager is ready!",
                     color=nextcord.Color.green(),
                 )
                 embed.add_field(
@@ -558,20 +571,16 @@ async def initialize_app(bot):
                     value="Ready!",
                     inline=True,
                 )
+                max_channels = server_state.config.get("max_channels", 10)
                 embed.add_field(
                     name="Game Channels",
-                    value=f"{len(existing_channels)}/{MAX_CHANNELS}",
+                    value=f"{len(existing_channels)}/{max_channels}",
                     inline=True,
                 )
                 embed.add_field(
                     name="Available",
                     value=f"{len(server_state.available_game_channels)}",
                     inline=True,
-                )
-                embed.add_field(
-                    name="Commands",
-                    value="• Use `/waitlist` to join games\n• Use `/state` to check status\n• Use `/admin create` to add more channels",
-                    inline=False,
                 )
                 await lobby_channel.send(embed=embed)
             else:
@@ -750,7 +759,7 @@ class EventsCog(commands.Cog):
 
                 embed = nextcord.Embed(
                     title="Voyaging",
-                    description="Voyager is ready to host games.",
+                    description="Voyager is ready!",
                     color=nextcord.Color.green(),
                 )
                 embed.add_field(
@@ -758,20 +767,16 @@ class EventsCog(commands.Cog):
                     value="Ready!",
                     inline=True,
                 )
+                max_channels = server_state.config.get("max_channels", 10)
                 embed.add_field(
                     name="Game Channels",
-                    value=f"{len(existing_channels)}/{MAX_CHANNELS}",
+                    value=f"{len(existing_channels)}/{max_channels}",
                     inline=True,
                 )
                 embed.add_field(
                     name="Available",
                     value=f"{len(server_state.available_game_channels)}",
                     inline=True,
-                )
-                embed.add_field(
-                    name="Commands",
-                    value="• Use `/waitlist` to join games\n• Use `/state` to check status\n• Use `/admin create` to add more channels",
-                    inline=False,
                 )
                 await lobby_channel.send(embed=embed)
             else:
